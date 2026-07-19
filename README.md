@@ -211,9 +211,9 @@ Press any letter to jump directly to that app. The current app is highlighted in
 
 ## Roadmap
 
-**v2.7 (current) — Complete ✅**
+**v2.5 (current) — Complete ✅**
 
-All v2.7 features shipped. See the [documentation](docs/) for full details on what was built.
+All v2.5 features shipped. See the [documentation](docs/) for full details on what was built.
 
 **v3.0 (planned)**
 - Seamless password change with full data re-encryption
