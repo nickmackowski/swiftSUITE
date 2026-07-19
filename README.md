@@ -76,7 +76,7 @@ Detailed setup and usage guides for each app:
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/yourusername/swiftSUITE.git
+git clone https://github.com/nickmackowski/swiftSUITE.git
 cd swiftSUITE
 ```
 
