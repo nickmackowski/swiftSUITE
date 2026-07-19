@@ -24,8 +24,10 @@ On first launch swiftNOTES automatically creates an encrypted notebook using you
 
 ```
 NOTEBOOK: 12 Notes Stored  [2 Archived]               ● AES-256 ENCRYPTED
-Last Backup: 07/17/26 09:21                            ● All Notes Current
+Last Backup: 07/17/26 09:21                           ● All Notes Current
 ```
+- **AES-256 ENCRYPTED** — always green, confirms all data is encrypted at rest using AES-256-GCM via Apple's CryptoKit.
+- **All Notes Current** — backup is up to date. Changes since the last backup will update this indicator.
 
 The grid shows note number, date modified, title, and tags. Notes are sorted by most recently modified.
 
