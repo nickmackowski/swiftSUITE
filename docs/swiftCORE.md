@@ -2,6 +2,8 @@
 
 swiftCORE is the launcher and authentication hub for the swiftSUITE. It is the first app you interact with on every session and the gateway to all other apps.
 
+<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/45256bcf-fdf4-4ae8-951a-f6376e555ed2" />
+
 ---
 
 ## What It Does
@@ -36,8 +38,6 @@ Last login: THU JUL 17 09:21:25 2026
 Type your username, press Tab or Enter, then type your password. The password field does not echo characters.
 
 On successful login, swiftCORE writes a session key to `.core_session` (valid for 30 minutes) and presents the main navigation screen.
-
-<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/45256bcf-fdf4-4ae8-951a-f6376e555ed2" />
 
 <img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/29e97210-1132-4989-b230-bef4228567e1" />
 
