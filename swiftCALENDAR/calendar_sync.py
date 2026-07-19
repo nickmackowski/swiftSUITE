@@ -250,11 +250,30 @@ def fetch_taf(station_id, calendar_label, **kwargs):
 
 
 def parse_ics_date(raw_line):
+    # Windows → IANA timezone name mapping (Outlook uses Windows names)
+    WINDOWS_TZ = {
+        "Eastern Standard Time":   "America/New_York",
+        "Eastern Daylight Time":   "America/New_York",
+        "Central Standard Time":   "America/Chicago",
+        "Central Daylight Time":   "America/Chicago",
+        "Mountain Standard Time":  "America/Denver",
+        "Mountain Daylight Time":  "America/Denver",
+        "Pacific Standard Time":   "America/Los_Angeles",
+        "Pacific Daylight Time":   "America/Los_Angeles",
+        "UTC":                     "UTC",
+        "Greenwich Standard Time": "UTC",
+        "US Eastern Standard Time":"America/Indiana/Indianapolis",
+        "US Mountain Standard Time":"America/Phoenix",
+        "Hawaiian Standard Time":  "Pacific/Honolulu",
+        "Alaskan Standard Time":   "America/Anchorage",
+    }
+
     date_str = raw_line.strip()
     tzid = None
     tzid_match = re.search(r"TZID=([^:;]+)", date_str)
     if tzid_match:
-        tzid = tzid_match.group(1)
+        raw_tzid = tzid_match.group(1).strip()
+        tzid = WINDOWS_TZ.get(raw_tzid, raw_tzid)  # map Windows → IANA if possible
     if ":" in date_str:
         date_str = date_str.split(":")[-1]
     if len(date_str) == 8 and date_str.isdigit():
@@ -267,15 +286,23 @@ def parse_ics_date(raw_line):
         naive_dt = datetime.strptime(clean[:14], "%Y%m%d%H%M%S")
     except Exception:
         return None, False
-    if is_utc or tzid is None:
-        utc_dt = naive_dt
+    if is_utc:
+        utc_dt = naive_dt  # explicit UTC — keep as-is
+    elif tzid is None:
+        # Floating time (no Z, no TZID) — treat as local system time
+        import time as _time
+        local_offset = _time.timezone if not _time.localtime().tm_isdst else _time.altzone
+        utc_dt = naive_dt + timedelta(seconds=local_offset)
     else:
         try:
             zone   = ZoneInfo(tzid)
             aware  = naive_dt.replace(tzinfo=zone)
             utc_dt = aware.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
         except Exception:
-            utc_dt = naive_dt
+            # Unrecognized TZID — fall back to local time rather than UTC
+            import time as _time
+            local_offset = _time.timezone if not _time.localtime().tm_isdst else _time.altzone
+            utc_dt = naive_dt + timedelta(seconds=local_offset)
     return utc_dt.strftime("%Y-%m-%dT%H:%M:%SZ"), False
 
 
