@@ -21,7 +21,7 @@ VAULT: 8 Credentials Stored                           ● AES-256 ENCRYPTED
 Last Backup: Never                                    ● 3 Reused, 1 weak
 ``` 
 - **AES-256 ENCRYPTED** — always green, confirms all data is encrypted at rest using AES-256-GCM via Apple's CryptoKit.
-- **All Credentials Current** — backup is up to date. Changes since the last backup will update this indicator.
+- **Reused / Weak** — password health indicators. Reused flags credentials sharing the same password across multiple services. Weak flags passwords that are short or lack complexity. Both update automatically as credentials change.
 
 The grid shows credential number, a reuse / weak flag, service name, URL, and account name. Reused / weak passwords are highlighted to help you identify accounts that share the same password.
 
