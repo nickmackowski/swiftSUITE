@@ -14,7 +14,6 @@ This project is intended for personal use. It is not designed to replace a profe
 - Pulls live market prices from a public data source
 - Calculates current value, gain/loss in dollars, and gain/loss as a percentage per holding
 - Shows portfolio totals and indicates market open/closed status
-- Flags each position as LIVE or DELAYED depending on data availability
 
 ---
 
