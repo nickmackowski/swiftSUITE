@@ -73,7 +73,7 @@ The status line shows counts at a glance. Use this to prioritize which passwords
 
 ## Bulk Import
 
-swiftVAULT can import credentials from a CSV file placed at `swiftVAULT/vault.csv`. The file supports flexible column headers compatible with exports from Chrome, Bitwarden, and 1Password.
+swiftVAULT can import credentials from a CSV file placed at `swiftVAULT/vault.csv`.
 
 Supported column names:
 - Service: `service`, `name`, `title`, `site`
