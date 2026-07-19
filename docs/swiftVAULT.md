@@ -2,6 +2,8 @@
 
 swiftVAULT is an AES-256 encrypted password manager. Credentials are stored locally and never leave your machine. All passwords are encrypted at rest and only decrypted when you explicitly view them.
 
+<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/d08a73ed-5307-4550-8f3e-c1996bb41af0" />
+
 ---
 
 ## What It Does
