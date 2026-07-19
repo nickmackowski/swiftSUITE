@@ -102,8 +102,8 @@ This integration works automatically as long as swiftCONTACTS has been set up an
 If you have more than one email account configured, press `TAB` in the workspace to cycle between them. The account indicator at the top shows which account you are currently viewing:
 
 ```
-ACCOUNT: [1/2] nick@gmail.com
-ACCOUNT: [2/2] nick@outlook.com
+ACCOUNT: [1/2] user@gmail.com
+ACCOUNT: [2/2] user@outlook.com
 ```
 
 Each account maintains its own folder and message list independently.
