@@ -159,7 +159,7 @@ Cloud coverage: CLR = Clear, FEW = 1-2 oktas, SCT = Scattered, BKN = Broken, OVC
 
 ### TAF — Forecast
 
-A TAF is a 24-30 hour forecast using the same token format as a METAR. swiftCALENDAR extracts the FM (From) group for tomorrow morning and displays it as a single line.
+A TAF is a 24-30 hour forecast using the same format as a METAR. swiftCALENDAR extracts the FM (From) group for tomorrow morning and displays it as a single line.
 
 `FM190300 24004KT P6SM FEW050 BKN250` = From the 19th at 03:00Z, wind 240° at 4 knots, visibility greater than 6 miles, few clouds at 5,000 ft.
 
