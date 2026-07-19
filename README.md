@@ -6,7 +6,7 @@ A personal productivity suite built entirely in Swift for macOS terminals. Six c
 
 Version 1.0 of swiftSUITE was developed with the assistance of Google Gemini. Version 2.0 was significantly refined, expanded, and rebuilt with the assistance of Anthropic Claude. The `c` suffix on every version number is a small nod to that collaboration.
 
-I am not a professional programmer or software developer. This project is a demonstration of what becomes possible when a idea and AI-assistance development come together. If you have an idea for a personal tool and think you lack the technical background to build it — this project is proof that you might be wrong ;-)
+I am not a professional programmer or software developer. This project is a demonstration of what becomes possible when a idea and AI-assistance development come together. If you have an idea for a personal tool and think you lack the technical background to build it — this project is proof that you might be wrong.  Claude AI even wrote the readme ;-)
 
 ---
 
