@@ -2,6 +2,8 @@
 
 swiftNOTES is an AES-256 encrypted personal notebook. Notes are stored locally and encrypted at rest — nobody can read them without your swiftCORE password.
 
+<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/ee6f88be-418d-4dd5-90db-4b68f04024cc" />
+
 ---
 
 ## What It Does
