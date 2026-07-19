@@ -51,14 +51,14 @@ The grid shows contact number, name, company, and tags.
 Contact details are grouped into logical blocks for easy reading:
 
 ```
-Name              first last
+Name              First Last
 Personal Email    user@email.com
 Personal Phone    123-345-7890
 Birthday          mm/dd/yyyy
-Spouse            spouse
+Spouse            Spouse Name
 
 Address           124 Any Street
-                  Any Town, NC xxxxx
+                  Any Town, NC 12345
 
 Company           Company Name
 Work Email        Company Email
