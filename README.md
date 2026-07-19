@@ -1,12 +1,12 @@
 # swiftSUITE
 
-A personal productivity suite built entirely in Swift for macOS terminals. Six compiled command-line apps sharing a unified login, consistent visual design, and keyboard navigation — accessible locally or from any browser on your network via [ttyd](https://github.com/tsl0922/ttyd) and Tailscale.
+A personal productivity suite built entirely in Swift for macOS terminals. Six compiled command-line apps sharing a unified login, consistent visual design, and keyboard navigation — accessible locally or from any browser on your network via [ttyd](https://github.com/tsl0922/ttyd) and Tailscale.  Beta Notice: This software is currently in development. While it is functional, you may encounter bugs, glitches, unexpected behavior, or incomplete features.  If the application becomes unresponsive or behaves unexpectedly, pressing Ctrl+Z and restarting swiftCORE may be enough to zap "the ghost in the machine."  Please use this software with caution, report any issues you encounter, and always keep backups of your data.  Thanks and enjoy ;-)
 
 ## The Story Behind This Project
 
-Version 1.0 of swiftSUITE was developed with the assistance of Google Gemini. Version 2.0 was significantly refined, expanded, and rebuilt with the assistance of Anthropic Claude. The `c` suffix on every version number is a small nod to that collaboration.
+Version 1.0 of swiftSUITE was developed with the assistance of Google Gemini. Version 2.0 was significantly refined, expanded, and rebuilt with the assistance of Anthropic Claude. The `c` suffix on every version number is a small nod to that collaboration.  Version numbers are dirived fron the last date of compile so ig you ame changes please keet the versioning scheme in tact.  Versioning: All applications currently follow the v2.5.MM.DD versioning scheme, where MM represents the month and DD represents the release day. The exception is swiftCALENDAR, which is currently at v2.7 due to several late-stage, semi-major feature changes.
 
-I am not a professional programmer or software developer. This project is a demonstration of what becomes possible when a idea and AI-assistance development come together. If you have an idea for a personal tool and think you lack the technical background to build it — this project is proof that you might be wrong.  Claude AI even wrote the readme ;-)
+I am not a professional programmer or software developer. This project is a demonstration of what becomes possible when a idea and AI-assistance development come together. If you have an idea for a personal tool and think you lack the technical background to build it — this project is proof that you might be wrong.  Claude AI even wrote this Readme and supporting documentation ;-)
 
 ---
 
