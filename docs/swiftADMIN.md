@@ -2,6 +2,8 @@
 
 swiftADMIN is a Python-based administrative toolkit for the swiftSUITE. It handles building the Swift apps, managing the ttyd web terminal server, and performing maintenance tasks like factory reset.
 
+<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/29a3022d-568c-4a02-88b3-fbce17593e7a" />
+
 ---
 
 ## What It Does
