@@ -21,7 +21,7 @@ VAULT: 8 Credentials Stored                           ● AES-256 ENCRYPTED
 Last Backup: Never                                     ● 3 Reused
 ```
 
-The grid shows credential number, a reuse flag (`R` in yellow), service name, URL, and account name. Reused / weak passwords are highlighted to help you identify accounts that share the same password.
+The grid shows credential number, a reuse / weak flag, service name, URL, and account name. Reused / weak passwords are highlighted to help you identify accounts that share the same password.
 
 ---
 
