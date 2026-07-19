@@ -34,7 +34,7 @@ Press `A` from the main workspace to open Account Setup. You will need:
 ## Main Workspace
 
 ```
-ACCOUNT: [1/2] nick@gmail.com ──► FOLDER: [ INBOX ] (23 Messages)
+ACCOUNT: [1/2] user@mail.com ──► FOLDER: [ INBOX ] (23 Messages)
 Status: [ Done ] Sync complete.
 ```
 
