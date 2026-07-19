@@ -55,8 +55,8 @@ The grid shows position number, company name, ticker symbol, shares held, cost b
 
 Press `A` from the workspace. You will be prompted for:
 
-1. **Company Name** — full name (e.g. `Dell Technologies Inc.`)
-2. **Ticker Symbol** — exchange symbol (e.g. `DELL`)
+1. **Company Name** — full name (e.g. `Company X Technologies Inc.`)
+2. **Ticker Symbol** — exchange symbol (e.g. `xxxx`)
 3. **Shares** — number of shares held
 4. **Cost Basis** — your average purchase price per share
 
@@ -69,7 +69,6 @@ swiftSTOCKS fetches the current price immediately after adding.
 - Press `R` at any time to refresh all prices
 - The status line shows the time of the last data pull
 - Market open/closed status is shown in the top right
-- Data is marked LIVE during market hours and DELAYED or CLOSED otherwise
 
 ---
 
