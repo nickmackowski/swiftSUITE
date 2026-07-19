@@ -270,6 +270,8 @@ func printHeader(snapshot: SystemSnapshot, username: String) {
     var titleChars = Array(repeating: " ", count: innerWidth)
     for (i, ch) in dateStr.enumerated() where i < innerWidth { titleChars[i] = String(ch) }
     for (i, ch) in titleText.enumerated() { titleChars[sidePad + i] = String(ch) }
+    // Color the trailing 'c' orange without affecting layout positions
+    titleChars[sidePad + titleText.count - 1] = "\u{001B}[38;5;208mc\u{001B}[0m"
     let timeStart = innerWidth - timeStr.count
     for (i, ch) in timeStr.enumerated() { titleChars[timeStart + i] = String(ch) }
 
