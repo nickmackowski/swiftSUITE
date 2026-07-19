@@ -46,8 +46,8 @@ def load_accounts():
 
 
 def fetch_metar(station_id, calendar_label):
-    """Fetch latest METAR for a station and return a single all-day calendar event."""
-    url = f"https://aviationweather.gov/api/data/metar?ids={station_id}&format=raw&hours=2"
+    """Fetch today's and yesterday's METAR — creates up to 2 all-day events."""
+    url = f"https://aviationweather.gov/api/data/metar?ids={station_id}&format=raw&hours=26"
     print(f"  Fetching METAR for {station_id}...")
     try:
         req = urllib.request.Request(url=url, headers={"User-Agent": "swiftCALENDAR/2.7"})
@@ -57,48 +57,66 @@ def fetch_metar(station_id, calendar_label):
         print(f"  Warning: Could not fetch METAR for {station_id}: {e}")
         return []
 
-    # First non-empty line is the METAR
-    metar = next((l.strip() for l in raw.splitlines() if l.strip()), "")
-    if not metar:
+    lines = [l.strip() for l in raw.splitlines() if l.strip()]
+    if not lines:
         print(f"  Warning: Empty METAR response for {station_id}")
         return []
 
-    # Truncate at RMK — everything after is encoded remarks not useful at a glance
-    metar_short = metar.split(" RMK")[0].strip()
     import re as _re
-    td_match = _re.search(r"\b(M?\d{2})/(M?\d{2})\b", metar)
-    temp_suffix = ""
-    if td_match:
-        def to_f(s):
-            val = -int(s[1:]) if s.startswith("M") else int(s)
-            return round(val * 9 / 5 + 32)
-        tf = to_f(td_match.group(1))
-        df = to_f(td_match.group(2))
-        temp_suffix = f"{tf}°F/{df}°F"
+    now       = datetime.now()
+    today_day = now.strftime("%d")
+    yest_day  = (now - timedelta(days=1)).strftime("%d")
 
-    # Strip type designator (METAR/SPECI) and station ID from title
-    # "METAR KCLT 181052Z..." → "181052Z..."
-    import re as _re2
-    title_clean = _re2.sub(r'^(METAR|SPECI)\s+', '', metar_short, flags=_re2.IGNORECASE).strip()
-    if title_clean.upper().startswith(station_id.upper() + " "):
-        title_clean = title_clean[len(station_id)+1:].strip()
+    def parse_one(metar, event_date):
+        """Parse a single METAR line into a calendar event dict."""
+        metar_short = metar.split(" RMK")[0].strip()
+        td_match = _re.search(r"\b(M?\d{2})/(M?\d{2})\b", metar)
+        temp_suffix = ""
+        if td_match:
+            def to_f(s):
+                val = -int(s[1:]) if s.startswith("M") else int(s)
+                return round(val * 9 / 5 + 32)
+            temp_suffix = f"{to_f(td_match.group(1))}°F/{to_f(td_match.group(2))}°F"
+        title = _re.sub(r'^(METAR|SPECI)\s+', '', metar_short, flags=_re.IGNORECASE).strip()
+        if title.upper().startswith(station_id.upper() + " "):
+            title = title[len(station_id)+1:].strip()
+        start = event_date.strftime("%Y-%m-%dT12:00:00Z")
+        end   = (event_date + timedelta(days=1)).strftime("%Y-%m-%dT12:00:00Z")
+        return {
+            "id":           str(uuid.uuid4()).upper(),
+            "title":        title,
+            "location":     station_id,
+            "startTime":    start,
+            "endTime":      end,
+            "notes":        temp_suffix,
+            "tags":         [],
+            "calendarName": calendar_label,
+            "isAllDay":     True,
+            "isLocal":      False,
+        }
 
-    now = datetime.utcnow()
-    today_str  = now.strftime("%Y-%m-%dT12:00:00Z")
-    tmrw_str   = (now + timedelta(days=1)).strftime("%Y-%m-%dT12:00:00Z")
+    events = []
+    found_today = False
+    found_yest  = False
 
-    return [{
-        "id":           str(uuid.uuid4()).upper(),
-        "title":        title_clean,
-        "location":     station_id,
-        "startTime":    today_str,
-        "endTime":      tmrw_str,
-        "notes":        temp_suffix,   # stored for red display in Swift agenda
-        "tags":         [],
-        "calendarName": calendar_label,
-        "isAllDay":     True,
-        "isLocal":      False,
-    }]
+    for line in lines:
+        # Extract day from METAR timestamp (DDHHMM Z format)
+        ts_match = _re.search(r'\b(\d{2})\d{4}Z\b', line)
+        if not ts_match:
+            continue
+        day = ts_match.group(1)
+        if day == today_day and not found_today:
+            events.append(parse_one(line, now))
+            found_today = True
+            print(f"  METAR today: {line[:50]}")
+        elif day == yest_day and not found_yest:
+            events.append(parse_one(line, now - timedelta(days=1)))
+            found_yest = True
+            print(f"  METAR yesterday: {line[:50]}")
+        if found_today and found_yest:
+            break
+
+    return events
 
 
 
@@ -167,7 +185,7 @@ def fetch_taf(station_id, calendar_label, **kwargs):
 
     # Search full text for the FM group covering tomorrow
     # Use the RAW (not unfolded) text so FM groups are preserved as tokens
-    now      = datetime.utcnow()
+    now      = datetime.now()  # local time
     tomorrow = now + timedelta(days=1)
     tmrw_day = tomorrow.strftime("%d")
 
