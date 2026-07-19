@@ -94,7 +94,7 @@ The password change feature is under development. Changing the master password r
 2. Run factory reset
 3. Log in with new password
 4. Re-import data via each app's Utilities menu
-5. Warning: This feature is currently under development. Data loss is possible (or even likely). Proceed with caution and ensure you have backups before continuing.
+5. Warning: This feature is currently under development. Data loss is possible/likely. Proceed with caution and ensure you have backups before continuing.
 
 ---
 
