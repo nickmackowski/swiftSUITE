@@ -52,7 +52,7 @@ Contact details are grouped into logical blocks for easy reading:
 
 ```
 Name              first last
-Personal Email    user@gmail.com
+Personal Email    user@email.com
 Personal Phone    123-345-7890
 Birthday          mm/dd/yyyy
 Spouse            spouse
