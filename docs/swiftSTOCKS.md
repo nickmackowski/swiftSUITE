@@ -21,7 +21,7 @@ This project is intended for personal use. It is not designed to replace a profe
 
 ```
 PORTFOLIO: 3 Positions Held                           ● MARKET CLOSED
-Last Data Pull: 09:33 PM  [R] to refresh             ● Gain/Loss: +$20,724.7 (+188.23%)
+Last Data Pull: 09:33 PM  [R] to refresh              ● Gain/Loss: +$20,724.7 (+188.23%)
 ```
 
 The grid shows position number, company name, ticker symbol, shares held, cost basis, current market price, total value, gain/loss in dollars, gain/loss percentage, and data type (LIVE or DELAYED).
