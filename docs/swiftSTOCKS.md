@@ -1,6 +1,8 @@
 # swiftSTOCKS
 
-swiftSTOCKS is a personal portfolio tracker that pulls live market data and shows your holdings, current market value, and gain/loss at a glance.
+swiftSTOCKS is a lightweight, personal portfolio tracker that retrieves live market data and provides an at-a-glance view of your holdings, current market value, and unrealized gains or losses.
+
+This project is intended for personal use. It is not designed to replace a professional portfolio management platform or financial planning application. While every effort has been made to provide accurate information, market data may be delayed or unavailable, and no guarantees are made regarding the accuracy or completeness of the data. Always verify financial information before making investment decisions.
 
 ---
 
