@@ -2,6 +2,8 @@
 
 A personal productivity suite built entirely in Swift for macOS terminals. Six compiled command-line apps sharing a unified login, consistent visual design, and keyboard navigation — accessible locally or from any browser on your network via [ttyd](https://github.com/tsl0922/ttyd) and Tailscale. Beta Notice: This software is currently in development. While it is functional, you may encounter bugs, glitches, unexpected behavior, or incomplete features. If the application becomes unresponsive or behaves unexpectedly, pressing Ctrl+Z and restarting swiftCORE may be enough to zap "the ghost in the machine." Please use this software with caution, report any issues you encounter, and always keep backups of your data.  Thanks and enjoy ;-)
 
+<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/8cc305cc-9012-4773-87b9-1a59ca33fe44" />
+
 ## The Story Behind This Project
 
 Version 1.0 of swiftSUITE was developed with the assistance of Google Gemini. Version 2.0 was significantly refined, expanded, and rebuilt with the assistance of Anthropic Claude. The `c` suffix on every version number is a small nod to that collaboration. Version numbers are derived from the date of the most recent compile. If you modify the source code, please preserve the existing versioning convention. All applications use the v2.5.MM.DD versioning format, where MM is the month and DD is the day of the release. The exception is swiftCALENDAR, which is currently version v2.7 due to several late-stage, semi-major changes introduced during development.
