@@ -51,20 +51,20 @@ The grid shows contact number, name, company, and tags.
 Contact details are grouped into logical blocks for easy reading:
 
 ```
-Name              Nick Mackowski
-Personal Email    nick@gmail.com
-Personal Phone    704-555-1234
-Birthday          7/30/69
-Spouse            Suzanne
+Name              first last
+Personal Email    user@gmail.com
+Personal Phone    123-345-7890
+Birthday          mm/dd/yyyy
+Spouse            spouse
 
-Address           1046 Gardenia St
-                  Fort Mill, SC 29708
+Address           124 Any Street
+                  Any Town, NC xxxxx
 
-Company           DellEMC
-Work Email        nick@dell.com
-Work Phone        803-616-9876
+Company           Company Name
+Work Email        Company Email
+Work Phone        123-456-7890
 
-Tags              work, dell
+Tags              tag1, tag2, tag3
 Last Modified     07/17/26 09:21 (today)
 ```
 
