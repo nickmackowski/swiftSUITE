@@ -2,6 +2,8 @@
 
 swiftCONTACTS is an AES-256 encrypted personal contact manager. Contact details are stored locally and encrypted at rest. It integrates with swiftMAIL for name lookup when composing email.
 
+<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/69aa2a27-e6d9-480e-b34b-915adbe4dd7c" />
+
 ---
 
 ## What It Does
@@ -53,8 +55,8 @@ The grid shows contact number, name, company, and tags.
 Contact details are grouped into logical blocks for easy reading:
 
 ```
-Name              First Last
-Personal Email    user@email.com
+Name              Account Name
+Personal Email    account.name@rmail.com
 Personal Phone    123-345-7890
 Birthday          mm/dd/yyyy
 Spouse            Spouse Name
@@ -62,13 +64,15 @@ Spouse            Spouse Name
 Address           124 Any Street
                   Any Town, NC 12345
 
-Company           Company Name
-Work Email        Company Email
+Company           Work
+Work Email        account.name@work.com
 Work Phone        123-456-7890
 
 Tags              tag1, tag2, tag3
 Last Modified     07/17/26 09:21 (today)
 ```
+
+<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/2b558254-529d-4bd0-b896-121589d9153e" />
 
 ---
 
