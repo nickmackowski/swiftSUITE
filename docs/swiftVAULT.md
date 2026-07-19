@@ -18,10 +18,12 @@ swiftVAULT is an AES-256 encrypted password manager. Credentials are stored loca
 
 ```
 VAULT: 8 Credentials Stored                           ● AES-256 ENCRYPTED
-Last Backup: Never                                     ● 3 Reused
-```
+Last Backup: Never                                    ● 3 Reused, 1 weak
+``` 
+- **AES-256 ENCRYPTED** — always green, confirms all data is encrypted at rest using AES-256-GCM via Apple's CryptoKit.
+- **Reused / Weak** — password health indicators. Reused flags credentials sharing the same password across multiple services. Weak flags passwords that are short or lack complexity. Both update automatically as credentials change.
 
-The grid shows credential number, a reuse flag (`R` in yellow), service name, URL, and account name. Reused passwords are highlighted to help you identify accounts that share the same password.
+The grid shows credential number, a reuse / weak flag, service name, URL, and account name. Reused / weak passwords are highlighted to help you identify accounts that share the same password.
 
 ---
 
@@ -73,7 +75,7 @@ The status line shows counts at a glance. Use this to prioritize which passwords
 
 ## Bulk Import
 
-swiftVAULT can import credentials from a CSV file placed at `swiftVAULT/vault.csv`. The file supports flexible column headers compatible with exports from Chrome, Bitwarden, and 1Password.
+swiftVAULT can import credentials from a CSV file placed at `swiftVAULT/vault.csv`.
 
 Supported column names:
 - Service: `service`, `name`, `title`, `site`

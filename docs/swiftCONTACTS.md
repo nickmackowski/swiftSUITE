@@ -20,6 +20,8 @@ swiftCONTACTS is an AES-256 encrypted personal contact manager. Contact details 
 CONTACTS: 24 Contacts Stored                          ● AES-256 ENCRYPTED
 Last Backup: 07/17/26 09:21                           ● All Contacts Current
 ```
+- **AES-256 ENCRYPTED** — always green, confirms all data is encrypted at rest using AES-256-GCM via Apple's CryptoKit.
+- **All Contacts Current** — backup is up to date. Changes since the last backup will update this indicator.
 
 The grid shows contact number, name, company, and tags.
 
