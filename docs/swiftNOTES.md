@@ -77,7 +77,7 @@ Press `/` to search. The search scans titles, body text, and tags. Results appea
 
 Notes you no longer need day-to-day but want to keep can be archived rather than deleted:
 
-- Press `H` in the workspace or `V` on the detail screen to archive a note
+- Press `H` in the workspace and on the detail screen to archive a note
 - Archived notes disappear from the main view but are not deleted
 - Press `I` to switch to the archived notes view
 - From the archive, press `R` to restore a note to the main workspace or `D` to permanently delete it
