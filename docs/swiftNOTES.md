@@ -43,8 +43,8 @@ The grid shows note number, date modified, title, and tags. Notes are sorted by 
 | `A` | Add new note |
 | `/` | Search |
 | `D` | Delete selected note |
-| `H` | Archive selected note |
-| `I` | View archived notes |
+| `X` | Archive selected note |
+| `R` | Toggle archived notes |
 | `U` | Utilities menu |
 
 ### Note Detail Screen
