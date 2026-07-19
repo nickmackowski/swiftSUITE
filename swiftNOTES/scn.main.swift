@@ -98,7 +98,7 @@ enum PBKDF2 {
 
 enum NotebookCrypto {
     /// OWASP's current (2023-2026) minimum recommendation for PBKDF2-HMAC-SHA256.
-    static let kdfIterations = 600_000
+    static let kdfIterations = 100_000
     /// Encrypted at notebook creation and decrypted on every unlock attempt — if it doesn't come
     /// back exactly matching this, the master password was wrong.
     static let canaryPlaintext = "swiftNOTES-OK"
@@ -138,19 +138,33 @@ struct Note: Codable {
     var tags: [String] = []
     var dateCreated: Date = Date()
     var dateModified: Date = Date()
-    var isArchived: Bool = false   // archived notes hidden from main workspace
-    
-    init(title: String = "", encryptedBody: String = "", tags: [String] = [], dateCreated: Date = Date(), dateModified: Date = Date()) {
+    var isArchived: Bool = false // missing key on older notebooks decodes to this default
+
+    init(title: String = "", encryptedBody: String = "", tags: [String] = [], dateCreated: Date = Date(), dateModified: Date = Date(), isArchived: Bool = false) {
         self.title = title
         self.encryptedBody = encryptedBody
         self.tags = tags
         self.dateCreated = dateCreated
         self.dateModified = dateModified
+        self.isArchived = isArchived
+    }
+    
+    /// Tags actually stored on the note, plus a synthetic "ARC" tag prepended when archived.
+    /// Archived status isn't a real tag — it's never written into `tags`, so it can't collide with
+    /// search matching real tags, the edit screen's tag list, or get stripped by editing tags —
+    /// but it's prepended here so every place that displays tags shows it consistently.
+    private var displayTags: [String] {
+        isArchived ? ["ARC"] + tags : tags
     }
     
     func formattedTags() -> String {
-        if tags.isEmpty { return "[None]" }
-        return tags.map { "[\($0)]" }.joined(separator: " ")
+        if displayTags.isEmpty { return "[None]" }
+        return displayTags.map { "[\($0)]" }.joined(separator: " ")
+    }
+    
+    /// Comma-joined form for the workspace's compact grid column.
+    func formattedTagsCSV() -> String {
+        displayTags.joined(separator: ",")
     }
 }
 
@@ -308,6 +322,7 @@ class NotesManager {
     var screenStack: [NotesScreen] = [.workspace]
     var running = true
     var selectedIdx = 0
+    var hideArchived = false // workspace filter toggle — archived notes are visible by default
     
     let fileURL = resolveAppDataDirectory().appendingPathComponent("notes.json")
     let keyboard = NotesKeyboardReader()
@@ -407,7 +422,107 @@ class NotesManager {
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: sessionCacheURL.path)
     }
     
+
+    // MARK: - Unified Auth (v2.5)
+    // Reads the session key written by swiftCORE on login.
+    // Returns a SymmetricKey derived specifically for this app, or nil if session is expired/missing.
+    private func readCoreSessionKey(appID: String) -> SymmetricKey? {
+        let sessionFile = resolveAppDataDirectory()
+            .deletingLastPathComponent()
+            .appendingPathComponent("swiftcore")
+            .appendingPathComponent(".core_session")
+        guard let content = try? String(contentsOf: sessionFile, encoding: .utf8) else { return nil }
+        var expires: Double = 0
+        var skeyBase64 = ""
+        for line in content.components(separatedBy: "\n") {
+            let parts = line.components(separatedBy: ":")
+            guard parts.count >= 2 else { continue }
+            if parts[0] == "expires"  { expires    = Double(parts[1]) ?? 0 }
+            if parts[0] == "skey"     { skeyBase64 = parts[1...].joined(separator: ":") }
+        }
+        guard Date().timeIntervalSince1970 < expires, !skeyBase64.isEmpty else { return nil }
+        guard let skeyData = Data(base64Encoded: skeyBase64) else { return nil }
+        // Derive app-specific key so each app has a different SymmetricKey
+        var hasher = SHA256()
+        hasher.update(data: skeyData)
+        hasher.update(data: Data(appID.utf8))
+        let appKeyData = Data(hasher.finalize())
+        return SymmetricKey(data: appKeyData)
+    }
+
+    // Bounces to swiftCORE if session is expired or missing
+    private func requireValidSession() -> Bool {
+        let sessionFile = resolveAppDataDirectory()
+            .deletingLastPathComponent()
+            .appendingPathComponent("swiftcore")
+            .appendingPathComponent(".core_session")
+        guard let content = try? String(contentsOf: sessionFile, encoding: .utf8) else { return false }
+        for line in content.components(separatedBy: "\n") {
+            let parts = line.components(separatedBy: ":")
+            if parts.count >= 2 && parts[0] == "expires", let ts = Double(parts[1]) {
+                return Date().timeIntervalSince1970 < ts
+            }
+        }
+        return false
+    }
+
     private func unlockOrCreateNotebook() {
+        // v2.5 unified auth: try swiftCORE session key first
+        if let sessionKey = readCoreSessionKey(appID: "swiftNOTES") {
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                // No data file yet — create fresh notebook with session key
+                self.notebookKey = sessionKey
+                self.kdfSalt = NotebookCrypto.randomSalt()
+                self.kdfIterations = NotebookCrypto.kdfIterations
+                self.notes = []
+                saveNotebook()
+                NotesDebugLogger.log("New notebook created via unified auth", category: "NOTES")
+                return
+            }
+            if let data = try? Data(contentsOf: fileURL),
+               let notebookFile = try? JSONDecoder().decode(NotebookFile.self, from: data),
+               let decryptedCanary = try? NotebookCrypto.decrypt(notebookFile.canary, key: sessionKey),
+               decryptedCanary == NotebookCrypto.canaryPlaintext {
+                // Session key works — unlock silently
+                self.notebookKey = sessionKey
+                self.kdfSalt = Data(base64Encoded: notebookFile.kdfSalt) ?? Data()
+                self.kdfIterations = notebookFile.kdfIterations
+                self.notes = notebookFile.notes
+                self.lastBackupTimestamp = notebookFile.lastBackupTimestamp
+                recomputeNoteCaches()
+                NotesDebugLogger.log("Notebook unlocked via swiftCORE session (\(notebookFile.notes.count) notes)", category: "NOTES")
+                return
+            } else if FileManager.default.fileExists(atPath: fileURL.path) {
+                // Data file exists but encrypted with old per-app key — migrate
+                print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
+                printStandardHeader()
+                print("\n \u{001B}[1;33mswiftNOTES v2.5 upgrade:\u{001B}[0m Your notebook was encrypted with a")
+                print(" per-app password (pre-v2.5). It will be reset to use your swiftCORE")
+                print(" login password instead. Any existing notes will be cleared.\n")
+                print(" Press Enter to continue and re-initialize your notebook.")
+                _ = readLine()
+                try? FileManager.default.removeItem(at: fileURL)
+                self.notebookKey = sessionKey
+                self.kdfSalt = NotebookCrypto.randomSalt()
+                self.kdfIterations = NotebookCrypto.kdfIterations
+                self.notes = []
+                saveNotebook()
+                NotesDebugLogger.log("Notebook reset for unified auth migration", category: "NOTES")
+                return
+            }
+        }
+
+        // Fallback: no valid session — bounce to swiftCORE
+        if !requireValidSession() {
+            print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
+            printStandardHeader()
+            print("\n \u{001B}[1;31mSession expired.\u{001B}[0m Please log in via swiftCORE first.")
+            print(" Press Enter to exit.")
+            _ = readLine()
+            returnToLauncher()
+            exit(0)
+        }
+
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             createNewNotebook()
             return
@@ -656,11 +771,13 @@ class NotesManager {
         let timeString = timeFormatter.string(from: now).uppercased()
 
         let innerWidth = 118
-        let titleText = "swiftNOTES v2.07.12c"
+        let titleText = "swiftNOTES v2.5.07.15c"  // plain for layout; c colored below
         let sidePadding = (innerWidth - titleText.count) / 2
         var titleLineChars = Array(repeating: " ", count: innerWidth)
         for (i, ch) in dateString.enumerated() where i < innerWidth { titleLineChars[i] = String(ch) }
         for (i, ch) in titleText.enumerated() { titleLineChars[sidePadding + i] = String(ch) }
+        // Color the trailing 'c' orange without affecting layout positions
+        titleLineChars[sidePadding + titleText.count - 1] = "\u{001B}[38;5;208mc\u{001B}[0m"
         let timeStart = innerWidth - timeString.count
         for (i, ch) in timeString.enumerated() { titleLineChars[timeStart + i] = String(ch) }
 
@@ -746,18 +863,20 @@ class NotesManager {
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             printStandardHeader()
             
-            let sorted = notes.filter { !$0.isArchived }.sorted(by: { $0.dateModified > $1.dateModified })
+            let archivedCount = notes.filter { $0.isArchived }.count
+            let allSorted = notes.sorted(by: { $0.dateModified > $1.dateModified })
+            let sorted = hideArchived ? allSorted.filter { !$0.isArchived } : allSorted
             
-            let noteLabel = "\(sorted.count) Note\(sorted.count == 1 ? "" : "s") Stored  [\(notes.filter { $0.isArchived }.count) Archived]"
+            let noteLabel = "\(sorted.count) Note\(sorted.count == 1 ? "" : "s") Stored"
             let leftText = " NOTEBOOK: \(noteLabel)"
             let rightText = "● AES-256 ENCRYPTED"
-            let statusPadding = max(1, 120 - leftText.count - rightText.count)
+            let statusPadding = max(1, 119 - leftText.count - rightText.count)
             print("\u{001B}[1;37m NOTEBOOK:\u{001B}[0m \(noteLabel)\(String(repeating: " ", count: statusPadding))\u{001B}[1;32m\(rightText)\u{001B}[0m")
             
-            let backupText = " Last Backup: \(lastBackupTimestamp ?? "Never")"
+            let backupText = " Last Backup: \(lastBackupTimestamp ?? "Never")  / Archived: \(archivedCount)"
             let staleOK = staleNoteKeys.isEmpty
             let staleText = staleOK ? "● All Notes Current" : "● \(staleNoteKeys.count) Stale (1yr+ untouched)"
-            let stalePadding = max(1, 120 - backupText.count - staleText.count)
+            let stalePadding = max(1, 119 - backupText.count - staleText.count)
             let staleColor = staleOK ? "\u{001B}[1;32m" : "\u{001B}[1;33m"
             print("\(backupText)\(String(repeating: " ", count: stalePadding))\(staleColor)\(staleText)\u{001B}[0m")
             
@@ -786,20 +905,26 @@ class NotesManager {
                 for (rowNum, idx) in (startIndex..<endIndex).enumerated() {
                     let note = sorted[idx]
                     let isStale = staleNoteKeys.contains(noteKey(note))
+                    let isArchived = note.isArchived
                     let flag = isStale ? "S" : " "
                     let dateText = listDateFormatter.string(from: note.dateModified)
-                    let tagsText = note.tags.isEmpty ? "" : note.tags.joined(separator: ",")
+                    let tagsText = note.formattedTagsCSV()
                     let plain = buildNoteRow("\(rowNum + 1)", flag, dateText, note.title, tagsText)
                     
                     if idx == selectedIdx {
-                        // Bold reverse-video for selected — pad to 118 first so highlight fills to border
+                        // Bold reverse-video for selected — pad to 118 first so highlight fills to border.
+                        // Archived selections stay reverse-video (for visibility) with a dim modifier layered in.
                         let padded = plain.padding(toLength: 118, withPad: " ", startingAt: 0)
-                        print("│\u{001B}[7m\u{001B}[1m\(padded)\(resetCode)│")
+                        let selStyle = isArchived ? "\u{001B}[7m\u{001B}[2m" : "\u{001B}[7m\u{001B}[1m"
+                        print("│\(selStyle)\(padded)\(resetCode)│")
+                    } else if isArchived {
+                        // Archived rows render muted gray regardless of greenbar striping, so they
+                        // read as visually "put away" at a glance.
+                        let padded = plain.padding(toLength: 118, withPad: " ", startingAt: 0)
+                        print("│\u{001B}[38;5;242m\(padded)\(resetCode)│")
                     } else if (rowNum + 1) % 2 != 0 {
                         // Greenbar — odd visible rows, same dark green as stocks
                         let padded = plain.padding(toLength: 118, withPad: " ", startingAt: 0)
-                        let flagColor = isStale ? "\u{001B}[1;33m" : ""
-                        _ = flagColor  // stale color handled by greenbar contrast for now
                         print("│\(greenBarBG)\(padded)\(resetCode)│")
                     } else {
                         // Plain row — stale flag in yellow
@@ -820,7 +945,7 @@ class NotesManager {
             }
             
             print("╰" + String(repeating: "─", count: 118) + "╯")
-            printStandardFooter(keys: "ENTER/1-9: View | A: Add | /: Search | D: Delete | H: Archive | I: View Archived | U: Utilities")
+            printStandardFooter(keys: "ENTER/1-9: View | A: Add | /: Search | D: Delete | X: Archive | R: Hide Archived | U: Utilities")
             printNavFooter()
             
             switch keyboard.readKey() {
@@ -855,20 +980,19 @@ class NotesManager {
                     if !sorted.isEmpty {
                         deleteNoteInline(sorted[selectedIdx])
                     }
-                } else if lower == "h" {
+                } else if lower == "x" {
                     if !sorted.isEmpty {
-                        archiveNoteInline(sorted[selectedIdx])
+                        toggleArchiveInline(sorted[selectedIdx])
+                        if hideArchived && selectedIdx > 0 { selectedIdx -= 1 }
                     }
-                } else if lower == "i" {
-                    keyboard.disableRawMode()
-                    showArchivedWorkspace()
-                    return
+                } else if lower == "r" {
+                    hideArchived.toggle()
                 } else if lower == "u" {
                     keyboard.disableRawMode()
                     navigate(to: .dbUtilities)
                     return
                 } else {
-                    // Nav footer
+                    // Nav footer — [T] jumps to Contacts, [A] is claimed by Add Note
                     let navMap: [Character: String] = [
                         "t": "swiftCONTACTS", "c": "swiftCALENDAR",
                         "s": "swiftSTOCKS",   "m": "swiftMAIL",
@@ -891,7 +1015,7 @@ class NotesManager {
             }
         }
     }
-
+    
     private func deleteNoteInline(_ chosen: Note) {
         guard let masterIndex = notes.firstIndex(where: { noteKey($0) == noteKey(chosen) }) else { return }
         keyboard.disableRawMode()
@@ -906,134 +1030,18 @@ class NotesManager {
         }
         keyboard.enableRawMode()
     }
-
-    private func archiveNoteInline(_ chosen: Note) {
+    
+    private func toggleArchiveInline(_ chosen: Note) {
         guard let masterIndex = notes.firstIndex(where: { noteKey($0) == noteKey(chosen) }) else { return }
-        notes[masterIndex].isArchived = true
+        notes[masterIndex].isArchived.toggle()
         saveNotebook()
-        lastStatusMessage = "Archived \"\(chosen.title)\"."
+        lastStatusMessage = notes[masterIndex].isArchived
+            ? "Archived \(notes[masterIndex].title)."
+            : "Unarchived \(notes[masterIndex].title)."
         lastStatusWasError = false
-        NotesDebugLogger.log("Note archived (title redacted)", category: "NOTES")
-        if selectedIdx > 0 { selectedIdx -= 1 }
-    }
-
-    private func restoreNoteInline(_ chosen: Note) {
-        guard let masterIndex = notes.firstIndex(where: { noteKey($0) == noteKey(chosen) }) else { return }
-        notes[masterIndex].isArchived = false
-        saveNotebook()
-        lastStatusMessage = "Restored \"\(chosen.title)\"."
-        lastStatusWasError = false
-        NotesDebugLogger.log("Note restored (title redacted)", category: "NOTES")
+        NotesDebugLogger.log("Note archive state toggled (title redacted)", category: "NOTES")
     }
     
-    func showArchivedWorkspace() {
-        keyboard.enableRawMode()
-        let colNum = 2, colFlag = 1, colDate = 9, colTitle = 64, colTags = 32
-        let maxVisibleRows = 9
-        let greenBarBG = "\u{001B}[48;5;22m"
-        let resetCode  = "\u{001B}[0m"
-        var archiveIdx = 0
-
-        func lc(_ s: String, _ w: Int) -> String { String(s.prefix(w)).padding(toLength: w, withPad: " ", startingAt: 0) }
-        func rc(_ s: String, _ w: Int) -> String { s.count >= w ? String(s.prefix(w)) : String(repeating: " ", count: w - s.count) + s }
-        func buildRow(_ num: String, _ flag: String, _ date: String, _ title: String, _ tags: String) -> String {
-            "  " + rc(num, colNum) + "  " + lc(flag, colFlag) + "  " + lc(date, colDate) + "  " + lc(title, colTitle) + "  " + lc(tags, colTags)
-        }
-
-        let listDateFormatter = DateFormatter()
-        listDateFormatter.dateFormat = "MM/dd/yy"
-
-        while true {
-            print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
-            printStandardHeader()
-
-            let archived = notes.filter { $0.isArchived }.sorted(by: { $0.dateModified > $1.dateModified })
-            let count = archived.count
-            let leftText = " NOTEBOOK: \(count) Archived Note\(count == 1 ? "" : "s")"
-            let rightText = "● ARCHIVED VIEW"
-            let pad = max(1, 119 - leftText.count - rightText.count)
-            print("\u{001B}[1;37m NOTEBOOK:\u{001B}[0m \(count) Archived Note\(count == 1 ? "" : "s")\(String(repeating: " ", count: pad))\u{001B}[1;33m\(rightText)\u{001B}[0m")
-            print(" Press [R] to restore a note, [D] to permanently delete")
-
-            // Grid box
-            let headerRow = buildRow("#", "", "DATE", "TITLE", "TAGS")
-            print("╭" + String(repeating: "─", count: 118) + "╮")
-            print("│\u{001B}[1;37m\(headerRow)\u{001B}[0m│")
-            print("├" + String(repeating: "─", count: 118) + "┤")
-
-            if archived.isEmpty {
-                let msg = "  No archived notes."
-                print("│\(msg)\(String(repeating: " ", count: 118 - msg.count))│")
-                for _ in 0..<(maxVisibleRows - 1) { print("│\(String(repeating: " ", count: 118))│") }
-            } else {
-                if archiveIdx >= archived.count { archiveIdx = max(0, archived.count - 1) }
-                let startIdx = archiveIdx >= maxVisibleRows ? archiveIdx - maxVisibleRows + 1 : 0
-                let visibleNotes = Array(archived[startIdx..<min(startIdx + maxVisibleRows, archived.count)])
-
-                for (rowNum, note) in visibleNotes.enumerated() {
-                    let absIdx   = startIdx + rowNum
-                    let dateText = listDateFormatter.string(from: note.dateModified)
-                    let tagsText = note.tags.prefix(3).joined(separator: ",")
-                    let plain    = buildRow("\(rowNum + 1)", "", dateText, note.title, tagsText)
-                    let padded   = plain.padding(toLength: 118, withPad: " ", startingAt: 0)
-                    if absIdx == archiveIdx {
-                        print("│\u{001B}[7m\u{001B}[1m\(padded)\(resetCode)│")
-                    } else if (rowNum + 1) % 2 != 0 {
-                        print("│\(greenBarBG)\(padded)\(resetCode)│")
-                    } else {
-                        print("│\(plain)│")
-                    }
-                }
-                let printed = visibleNotes.count
-                if printed < maxVisibleRows {
-                    for _ in 0..<(maxVisibleRows - printed) { print("│\(String(repeating: " ", count: 118))│") }
-                }
-            }
-            print("╰" + String(repeating: "─", count: 118) + "╯")
-            printStandardFooter(keys: "ENTER/1-9: View | R: Restore | D: Delete Permanently | I: Back to Notes | U: Utilities")
-            printNavFooter()
-
-            switch keyboard.readKey() {
-            case .up:
-                if !archived.isEmpty { archiveIdx = archiveIdx == 0 ? archived.count - 1 : archiveIdx - 1 }
-            case .down:
-                if !archived.isEmpty { archiveIdx = archiveIdx == archived.count - 1 ? 0 : archiveIdx + 1 }
-            case .enter:
-                if !archived.isEmpty {
-                    keyboard.disableRawMode()
-                    openSelectedNote(archived[archiveIdx])
-                    return
-                }
-            case .number(let num):
-                let startIdx = archiveIdx >= maxVisibleRows ? archiveIdx - maxVisibleRows + 1 : 0
-                let visibleNotes = Array(archived[startIdx..<min(startIdx + maxVisibleRows, archived.count)])
-                if num >= 1 && num <= visibleNotes.count {
-                    keyboard.disableRawMode()
-                    openSelectedNote(visibleNotes[num - 1])
-                    return
-                }
-            case .other(let ch):
-                let lower = Character(ch.lowercased())
-                if lower == "r" {
-                    if !archived.isEmpty { restoreNoteInline(archived[archiveIdx]) }
-                } else if lower == "d" {
-                    if !archived.isEmpty { deleteNoteInline(archived[archiveIdx]) }
-                } else if lower == "i" || lower == "l" {
-                    keyboard.disableRawMode()
-                    if lower == "l" { returnToLauncher() }
-                    return
-                } else if lower == "u" {
-                    keyboard.disableRawMode()
-                    navigate(to: .dbUtilities)
-                    return
-                }
-            case .escape:
-                keyboard.disableRawMode()
-                return
-            }
-        }
-    }
-
     private func openSelectedNote(_ chosen: Note) {
         if let masterIndex = notes.firstIndex(where: { noteKey($0) == noteKey(chosen) }) {
             navigate(to: .viewNote(index: masterIndex))
@@ -1168,11 +1176,8 @@ class NotesManager {
             }
             print("╰" + String(repeating: "─", count: inner) + "╯")
             print("")
-            let isArchived = note.isArchived
-            let footerKeys = isArchived
-                ? "[E] Edit  |  [R] Restore  |  [D] Delete  |  ESC: Back"
-                : "[E] Edit  |  [D] Delete  |  [H] Archive  |  ESC: Back"
-            printStandardFooter(keys: footerKeys)
+            let archiveLabel = note.isArchived ? "[X] Unarchive Note" : "[X] Archive Note"
+            printStandardFooter(keys: "[E] Edit Note  |  [D] Delete Note  |  \(archiveLabel)  |  ESC: Back")
             printNavFooter()
 
             switch keyboard.readKey() {
@@ -1186,6 +1191,11 @@ class NotesManager {
                     keyboard.disableRawMode()
                     navigate(to: .editNote(index: index))
                     return
+                } else if lower == "x" {
+                    notes[index].isArchived.toggle()
+                    saveNotebook()
+                    NotesDebugLogger.log("Note archive state toggled (title redacted)", category: "NOTES")
+                    keyboard.enableRawMode()
                 } else if lower == "d" {
                     keyboard.disableRawMode()
                     print("\n Delete \"\(note.title)\" permanently? (y/n): ", terminator: "")
@@ -1199,28 +1209,14 @@ class NotesManager {
                         return
                     }
                     keyboard.enableRawMode()
-                } else if lower == "h" && !isArchived {
-                    notes[index].isArchived = true
-                    saveNotebook()
-                    lastStatusMessage = "Note archived."
-                    NotesDebugLogger.log("Note archived (title redacted)", category: "NOTES")
-                    goBack()
-                    return
-                } else if lower == "r" && isArchived {
-                    notes[index].isArchived = false
-                    saveNotebook()
-                    lastStatusMessage = "Note restored."
-                    NotesDebugLogger.log("Note restored (title redacted)", category: "NOTES")
-                    goBack()
-                    return
                 } else {
                     // Nav footer keys
                     let navMap: [Character: String] = [
-                        "t": "swiftCONTACTS", "c": "swiftCALENDAR",
-                        "s": "swiftSTOCKS",   "m": "swiftMAIL",
-                        "v": "swiftVAULT"
+                        "c": "swiftCALENDAR", "s": "swiftSTOCKS",
+                        "m": "swiftMAIL",     "v": "swiftVAULT",
+                        "t": "swiftCONTACTS", "n": "swiftNOTES"
                     ]
-                    if let target = navMap[lower] {
+                    if let target = navMap[lower], target != "swiftNOTES" {
                         navigateToApp(target, args: [machineName, uptime, cpuUsage, memUsage])
                     } else if lower == "l" {
                         returnToLauncher()
@@ -1238,10 +1234,20 @@ class NotesManager {
         printStandardHeader()
         print("                                   >>> ADD NOTE <<<                                   ")
         print(String(repeating: "─", count: 120))
-        guard let title = getStringInput(prompt: " Title: ") else { return }
-        if title.isEmpty { return }
+        let titleInput = getStringInput(prompt: " Title: ")
+        guard let title = titleInput, !title.isEmpty else {
+            // getStringInput already called goBack() if the user hit ESC. A blank Enter also
+            // returns nil here but never touches the stack — without this check, .addNote stays
+            // on top and run() redraws this same prompt forever with no way out.
+            if case .addNote? = screenStack.last {
+                print("\n Cancelled: title was empty. Press Enter.")
+                _ = readLine()
+                goBack()
+            }
+            return
+        }
         
-        guard let rawTags = getStringInput(prompt: " Tags (Separate with spaces): ") else { return }
+        let rawTags = getStringInput(prompt: " Tags (Separate with spaces): ") ?? ""
         let assignedTags = parseTagsFromString(rawTags)
         
         let bodyPrompt = "\n Enter Note Body (Type 'DONE' on a clean line when finished):"
@@ -1442,7 +1448,6 @@ class NotesManager {
             }
             print("")
             printStandardFooter(keys: "↑/↓: Navigate | ENTER: Select | ESC: Back")
-            printNavFooter()
             
             switch keyboard.readKey() {
             case .up: selectedIdx = (selectedIdx == 0) ? options.count - 1 : selectedIdx - 1
@@ -1570,7 +1575,6 @@ class NotesManager {
                 }
                 print(String(repeating: "─", count: 120))
                 printStandardFooter(keys: "↑/↓: Navigate | ENTER: Select | ESC: Back")
-            printNavFooter()
                 
                 switch keyboard.readKey() {
                 case .up: selectedIdx = (selectedIdx == 0) ? backupFiles.count - 1 : selectedIdx - 1
