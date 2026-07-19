@@ -4,6 +4,8 @@ swiftSTOCKS is a lightweight, personal portfolio tracker that retrieves live mar
 
 This project is intended for personal use. It is not designed to replace a professional portfolio management platform or financial planning application. While every effort has been made to provide accurate information, market data may be delayed or unavailable, and no guarantees are made regarding the accuracy or completeness of the data. Always verify financial information before making investment decisions.
 
+<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/59ce928c-356d-4975-bfb3-45bbe5f243b1" />
+
 ---
 
 ## What It Does
