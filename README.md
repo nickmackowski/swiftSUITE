@@ -4,9 +4,9 @@ A personal productivity suite built entirely in Swift for macOS terminals. Six c
 
 ## The Story Behind This Project
 
-Version 1.0 of swiftSUITE was developed with the assistance of Google Gemini. Version 2.0 was significantly refined, expanded, and rebuilt with the assistance of Anthropic Claude. The `c` suffix on every version number is a small nod to that collaboration.  Version numbers are dirived fron the last date of compile so ig you ame changes please keet the versioning scheme in tact.  Versioning: All applications currently follow the v2.5.MM.DD versioning scheme, where MM represents the month and DD represents the release day. The exception is swiftCALENDAR, which is currently at v2.7 due to several late-stage, semi-major feature changes.
+Version 1.0 of swiftSUITE was developed with the assistance of Google Gemini. Version 2.0 was significantly refined, expanded, and rebuilt with the assistance of Anthropic Claude. The `c` suffix on every version number is a small nod to that collaboration.  Version numbers are derived from the date of the most recent compile. If you modify the source code, please preserve the existing versioning convention.  All applications use the v2.5.MM.DD versioning format, where MM is the month and DD is the day of the release. The only exception is swiftCALENDAR, which is currently version v2.7 due to several late-stage, semi-major changes introduced during development.
 
-I am not a professional programmer or software developer. This project is a demonstration of what becomes possible when a idea and AI-assistance development come together. If you have an idea for a personal tool and think you lack the technical background to build it — this project is proof that you might be wrong.  Claude AI even wrote this Readme and supporting documentation ;-)
+I am not a professional programmer or software developer. This project is a demonstration of what becomes possible when a idea and AI-assistance development come together. If you have an idea for a personal tool and think you lack the technical background to build it — this project is proof that you might be wrong.  Fun Fact: Claude AI even helped write this README and most of the supporting documentation ;-) Like the rest of the project, it's not perfect—but hopefully it's useful. If you spot anything that needs improvement, feel free to update it!
 
 ---
 
