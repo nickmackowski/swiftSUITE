@@ -216,7 +216,7 @@ All v2.7 features shipped. See the [documentation](docs/) for full details on wh
 **v3.0 (planned)**
 - Seamless password change with full data re-encryption
 - Two-way calendar sync — push locally created events back to iCloud, Outlook, and Google Calendar
-- swiftMAIL two-way sync already works ✅ — sent mail appears in your provider's Sent folder automatically
+- F-key navigation — use F1-F7 for suite-wide app switching, eliminating all letter-key conflicts (e.g. C for Compose vs Calendar, V for Vault vs Archive). Function keys are currently unused across all apps and would make a clean replacement for the nav footer letter keys
 
 ---
 
