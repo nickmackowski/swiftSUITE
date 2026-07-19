@@ -2,6 +2,8 @@
 
 swiftCALENDAR is a calendar app that syncs with any ICS/CalDAV feed and optionally displays live aviation weather (METAR and TAF) alongside your events. It provides a month grid view with a daily agenda and supports adding local events that persist across syncs.
 
+<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/0141a8cd-0fcb-44b1-9c4f-d1a0ff0a4412" />
+
 ---
 
 ## What It Does
