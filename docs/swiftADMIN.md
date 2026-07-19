@@ -91,7 +91,7 @@ Same as Build All but presents a numbered menu to select a single app. Useful fo
 The password change feature is under development. Changing the master password requires re-encrypting all data in swiftNOTES, swiftVAULT, and swiftCONTACTS with a new key. Until full re-encryption is implemented, use the export/import workflow as a workaround:
 
 1. Export data from each app's Utilities menu
-2. Run factory reset
+2. Run chanfe password script
 3. Log in with new password
 4. Re-import data via each app's Utilities menu
 5. Warning: This feature is currently under development. Data loss is possible/likely. Proceed with caution and ensure you have backups before continuing.
