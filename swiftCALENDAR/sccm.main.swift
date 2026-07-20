@@ -367,6 +367,7 @@ class CalendarManager {
         // Has events → bright white   No events → dim   Today → green bg + bright white   Cursor → yellow
         let dimText    = "\u{001B}[2m"
         let brightText = "\u{001B}[1;97m"
+        let localRed   = "\u{001B}[1;31m"  // shared with the agenda list below so grid/agenda always match
 
         func calCell(day: Int, eventColor: String) -> String {
             let dayStr  = String(format: "%02d", day)
@@ -391,6 +392,7 @@ class CalendarManager {
             let key = ISO8601DateFormatter().string(from: date).prefix(10)
             let dayEvts = eventsByDayCache[String(key)] ?? []
             for ev in dayEvts {
+                if ev.isLocal { return localRed }
                 let c = colorForCalendar(ev.calendarName)
                 if !c.isEmpty { return c }
             }
@@ -458,7 +460,6 @@ class CalendarManager {
                 let startStr    = ev.isAllDay ? "ALL DAY" : timeFormatter.string(from: ev.startTime)
                 let endStr      = ev.isAllDay ? "" : " – " + timeFormatter.string(from: ev.endTime)
                 let timeDisplay = ev.isAllDay ? "[\(startStr)]" : "[\(startStr)\(endStr)]"
-                let localRed    = "\u{001B}[1;31m"
                 let calColor    = colorForCalendar(ev.calendarName)
                 let calLabel    = ev.isLocal ? "Local" : ev.calendarName
                 let labelColor  = ev.isLocal ? localRed : calColor
@@ -595,6 +596,10 @@ class CalendarManager {
                     events.removeAll { $0.id == event.id }
                     rebuildEventsByDayCache()
                     saveEvents()
+                    // local_events.json is the authoritative store loadLocalEvents() re-reads on
+                    // every sync (and at startup) — without rewriting it here too, a deleted local
+                    // event survives in that file and gets re-appended right back into `events`.
+                    saveLocalEvents()
                     CalendarDebugLogger.log("Event deleted locally: \(event.id)", category: "CALENDAR")
                     currentScreen = .monthView
                     return

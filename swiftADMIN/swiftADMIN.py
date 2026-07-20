@@ -105,6 +105,7 @@ def header(subtitle: str = ""):
     title = Text(f"swiftADMIN v{VERSION}", style="bold cyan")
     if subtitle:
         title.append(f"  ›  {subtitle}", style="dim white")
+    title.append(f"\nWorking Directory -> {os.getcwd()}", style="bold red")
     console.print(Panel(title, width=FIXED_WIDTH, border_style="cyan"))
     console.print()
 
