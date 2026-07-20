@@ -520,11 +520,13 @@ class CalendarManager {
             } else if ch == "e" || ch == "E" {
                 keyboard.disableRawMode()
                 showAddEventScreen(preselectedDate: selectedDate)
-                keyboard.enableRawMode()
+                // showAddEventScreen already re-enables raw mode itself on every return path —
+                // calling it again here would snapshot the already-raw state as "original" and
+                // permanently break canonical/echo restoration for the rest of the session.
             } else if ch == "a" || ch == "A" {
                 keyboard.disableRawMode()
                 showAccountSetupScreen()
-                keyboard.enableRawMode()
+                // Same reasoning — showAccountSetupScreen guarantees raw mode is restored itself.
             } else if let num = Int(String(ch)), num >= 1 && num <= dayEvents.count {
                 keyboard.disableRawMode()
                 currentScreen = .viewEvent(event: dayEvents[num - 1])
@@ -579,7 +581,7 @@ class CalendarManager {
         if !event.notes.isEmpty { infoRow("Notes",    event.notes) }
         print("╰" + String(repeating: "─", count: inner) + "╯")
         print("")
-        printStandardFooter(keys: "[E] New Event  |  [D] Delete  |  [A] Accounts  |  ESC: Back")
+        printStandardFooter(keys: "[E] Edit  |  [D] Delete  |  [A] Accounts  |  ESC: Back")
         printNavFooter()
 
         let keyInput = keyboard.readKey()
@@ -600,13 +602,13 @@ class CalendarManager {
                 keyboard.enableRawMode()
             } else if lower == "e" {
                 keyboard.disableRawMode()
-                showAddEventScreen()
-                keyboard.enableRawMode()
+                showEditEventScreen(event)
+                // showEditEventScreen re-enables raw mode itself before every return path.
                 currentScreen = .monthView
             } else if lower == "a" {
                 keyboard.disableRawMode()
                 showAccountSetupScreen()
-                keyboard.enableRawMode()
+                // Same reasoning — showAccountSetupScreen guarantees raw mode is restored itself.
                 currentScreen = .monthView
             } else {
                 let navMap: [Character: String] = [
@@ -879,6 +881,119 @@ class CalendarManager {
         _ = readLine()
         keyboard.enableRawMode()
     }
+    
+    // MARK: - Edit Event Screen
+    
+    /// Prompts for each field pre-filled with the event's current value; blank Enter keeps it as-is.
+    /// Guarantees raw mode is re-enabled on every return path, same as showAddEventScreen, so callers
+    /// can trust the terminal state without re-toggling it themselves.
+    func showEditEventScreen(_ event: CalendarEvent) {
+        keyboard.disableRawMode()
+        print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
+        printStandardHeader()
+
+        let inner = 118
+        print("╭" + String(repeating: "─", count: inner) + "╮")
+        let title = "  EDIT EVENT"
+        print("│\(title)\(String(repeating: " ", count: inner - title.count))│")
+        print("├" + String(repeating: "─", count: inner) + "┤")
+        let hint = "  Press Enter on any field to keep its current value."
+        print("│\(hint)\(String(repeating: " ", count: inner - hint.count))│")
+        print("╰" + String(repeating: "─", count: inner) + "╯")
+        print("")
+        
+        guard event.isLocal else {
+            print(" This event was synced from a calendar feed and can't be edited here — only")
+            print(" locally-created events support editing. Press Enter to return.")
+            _ = readLine()
+            keyboard.enableRawMode()
+            return
+        }
+
+        let dateFmt = DateFormatter()
+        dateFmt.dateFormat = "MM/dd/yyyy"
+        let timeFmt = DateFormatter()
+        timeFmt.dateFormat = "hh:mm a"
+        timeFmt.locale = Locale(identifier: "en_US_POSIX")
+
+        // Title
+        print(" Event title [\(event.title)]: ", terminator: "")
+        let titleInput = readLine() ?? ""
+        let newTitle = titleInput.isEmpty ? event.title : titleInput
+
+        // Date
+        let curDateStr = dateFmt.string(from: event.startTime)
+        print(" Date (MM/DD/YYYY) [\(curDateStr)]: ", terminator: "")
+        let dateInput = readLine() ?? ""
+        var newDate = event.startTime
+        if !dateInput.isEmpty {
+            if let parsed = dateFmt.date(from: dateInput) {
+                newDate = parsed
+            } else {
+                print(" Invalid date format — keeping \(curDateStr). Press Enter.")
+                _ = readLine()
+            }
+        }
+
+        // All day?
+        let curAllDayStr = event.isAllDay ? "Yes" : "No"
+        print(" All day? [\(curAllDayStr)] (y/n): ", terminator: "")
+        let allDayInput = (readLine() ?? "").lowercased()
+        let newIsAllDay = allDayInput.isEmpty ? event.isAllDay : (allDayInput == "y" || allDayInput == "yes")
+
+        var newStart = newDate
+        var newEnd   = newDate
+
+        if !newIsAllDay {
+            let curStartStr = timeFmt.string(from: event.startTime)
+            let curEndStr   = timeFmt.string(from: event.endTime)
+
+            print(" Start time (hh:mm AM/PM) [\(curStartStr)]: ", terminator: "")
+            let startInput = readLine() ?? ""
+            let startComponents: DateComponents
+            if !startInput.isEmpty, let st = timeFmt.date(from: startInput.uppercased()) {
+                startComponents = Calendar.current.dateComponents([.hour, .minute], from: st)
+            } else {
+                startComponents = Calendar.current.dateComponents([.hour, .minute], from: event.startTime)
+            }
+            newStart = Calendar.current.date(bySettingHour: startComponents.hour ?? 9,
+                                              minute: startComponents.minute ?? 0,
+                                              second: 0, of: newDate) ?? newDate
+
+            print(" End time   (hh:mm AM/PM) [\(curEndStr)]: ", terminator: "")
+            let endInput = readLine() ?? ""
+            let endComponents: DateComponents
+            if !endInput.isEmpty, let et = timeFmt.date(from: endInput.uppercased()) {
+                endComponents = Calendar.current.dateComponents([.hour, .minute], from: et)
+            } else {
+                endComponents = Calendar.current.dateComponents([.hour, .minute], from: event.endTime)
+            }
+            newEnd = Calendar.current.date(bySettingHour: endComponents.hour ?? 10,
+                                            minute: endComponents.minute ?? 0,
+                                            second: 0, of: newDate) ?? newDate
+        }
+
+        // Notes
+        let curNotesStr = event.notes.isEmpty ? "None" : event.notes
+        print(" Notes [\(curNotesStr)]: ", terminator: "")
+        let notesInput = readLine() ?? ""
+        let newNotes = notesInput.isEmpty ? event.notes : notesInput
+
+        if let idx = events.firstIndex(where: { $0.id == event.id }) {
+            events[idx].title      = newTitle
+            events[idx].startTime  = newStart
+            events[idx].endTime    = newEnd
+            events[idx].isAllDay   = newIsAllDay
+            events[idx].notes      = newNotes
+            rebuildEventsByDayCache()
+            saveLocalEvents()
+            CalendarDebugLogger.log("Local event edited: \(event.id)", category: "CALENDAR")
+        }
+
+        print("\n\u{001B}[1;32m Event '\(newTitle)' updated.\u{001B}[0m Press Enter to return.")
+        _ = readLine()
+        keyboard.enableRawMode()
+    }
 
     // MARK: - Account Setup Screen
 
@@ -928,6 +1043,7 @@ class CalendarManager {
 
             switch key {
             case .escape:
+                keyboard.enableRawMode()
                 return
             case .up:
                 if selectedIdx > 0 { selectedIdx -= 1 }
