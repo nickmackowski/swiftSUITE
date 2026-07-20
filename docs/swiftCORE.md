@@ -41,6 +41,10 @@ On successful login, swiftCORE writes a session key to `.core_session` (valid fo
 
 <img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/29e97210-1132-4989-b230-bef4228567e1" />
 
+## System Telemetry
+
+The header bar displays live system information pulled directly from macOS at launch and refreshed on each screen render. Hostname and uptime are read from the system via uname and sysctl. CPU usage is calculated from processor load averages. Memory usage is read from the system's memory statistics. All telemetry is read-only — swiftCORE never modifies any system settings. The data is purely for at-a-glance awareness while using the suite.
+
 ---
 
 ## Navigation
