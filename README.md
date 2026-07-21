@@ -32,14 +32,14 @@ Fun Fact: Claude AI even helped write this README and most of the supporting doc
 
 Detailed setup and usage guides for each app:
 
-- [swiftCORE](docs/swiftCORE.md) — Launcher and authentication hub
-- [swiftNOTES](docs/swiftNOTES.md) — AES-256 encrypted notebook
-- [swiftVAULT](docs/swiftVAULT.md) — AES-256 encrypted password manager
-- [swiftCONTACTS](docs/swiftCONTACTS.md) — AES-256 encrypted contact manager
-- [swiftSTOCKS](docs/swiftSTOCKS.md) — Portfolio tracker with live market data
-- [swiftCALENDAR](docs/swiftCALENDAR.md) — Calendar with ICS, METAR, and TAF support
-- [swiftMAIL](docs/swiftMAIL.md) — IMAP/SMTP email client
-- [swiftADMIN](docs/swiftADMIN.md) — Admin toolkit
+- [swiftCORE](docs/swiftCORE.md) 
+- [swiftNOTES](docs/swiftNOTES.md) 
+- [swiftVAULT](docs/swiftVAULT.md)
+- [swiftCONTACTS](docs/swiftCONTACTS.md)
+- [swiftSTOCKS](docs/swiftSTOCKS.md)
+- [swiftCALENDAR](docs/swiftCALENDAR.md)
+- [swiftMAIL](docs/swiftMAIL.md)
+- [swiftADMIN](docs/swiftADMIN.md)
 
 ---
 
