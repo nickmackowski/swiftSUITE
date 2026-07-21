@@ -117,7 +117,7 @@ Press `ENTER` on any day with events, then select an event by number to open the
 
 | Key | Action |
 |-----|--------|
-| `T` | Add a new event |
+| `E` | Edit event - local events only|
 | `D` | Delete this event |
 | `A` | Account setup |
 | `ESC` | Back to calendar |
