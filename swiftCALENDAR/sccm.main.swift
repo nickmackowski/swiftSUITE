@@ -48,6 +48,27 @@ struct CalendarEvent: Codable {
     var calendarName: String = ""
     var isAllDay: Bool = false
     var isLocal: Bool = false      // true = created in-app, kept across syncs
+    var isWeather: Bool = false    // true = METAR history entry — set at load time only, never read
+                                    // from or written to disk (see CodingKeys below)
+    var decodedWeather: String? = nil  // plain-English METAR/TAF decode for the detail view only —
+                                        // agenda/title keeps the raw code. nil for non-weather events.
+                                        // Optional, so a missing key in older calendar.json entries or
+                                        // regular ICS events decodes safely as nil (no CodingKeys
+                                        // exclusion needed, unlike isWeather — see note below).
+
+    // isWeather is intentionally omitted here. Swift's synthesized Decodable requires a JSON
+    // key for every listed property regardless of its default value, so including isWeather
+    // would break decoding of calendar.json and metar_history.json entirely (neither file
+    // contains that key). Leaving it out of CodingKeys means it's skipped during decode/encode
+    // and simply keeps its default (false) until loadWeatherHistory() sets it explicitly.
+    //
+    // decodedWeather is the opposite case: it DOES need to round-trip to/from JSON (calendar_sync.py
+    // writes it for METAR/TAF events), so it MUST be listed here — if a future edit adds a new
+    // Optional property and forgets to add it to this enum, it'll silently decode as nil forever
+    // regardless of what's actually in the file, which is easy to miss since nothing throws.
+    enum CodingKeys: String, CodingKey {
+        case id, title, location, startTime, endTime, notes, calendarName, isAllDay, isLocal, decodedWeather
+    }
 }
 
 struct CalendarAccount: Codable {
@@ -157,7 +178,8 @@ class CalKeyboardReader {
 class CalendarManager {
     var events: [CalendarEvent] = []
     var calendarAccounts: [CalendarAccount] = []
-    let localEventsURL = resolveAppDataDirectory().appendingPathComponent("local_events.json")
+    let localEventsURL    = resolveAppDataDirectory().appendingPathComponent("local_events.json")
+    let weatherHistoryURL = resolveAppDataDirectory().appendingPathComponent("metar_history.json")
     let configURL      = resolveAppDataDirectory().appendingPathComponent("calendar_accounts.json")
     var currentScreen: CalScreen = .monthView
     var running = true
@@ -196,6 +218,7 @@ class CalendarManager {
         loadConfig()
         loadEvents()
         loadLocalEvents()
+        loadWeatherHistory()
         parseLauncherArguments()
     }
     
@@ -367,7 +390,8 @@ class CalendarManager {
         // Has events → bright white   No events → dim   Today → green bg + bright white   Cursor → yellow
         let dimText    = "\u{001B}[2m"
         let brightText = "\u{001B}[1;97m"
-        let localRed   = "\u{001B}[1;31m"  // shared with the agenda list below so grid/agenda always match
+        let localRed    = "\u{001B}[1;31m"  // shared with the agenda list below so grid/agenda always match
+        let weatherBlue = "\u{001B}[1;34m"  // same — shared between grid and agenda, METAR history entries
 
         func calCell(day: Int, eventColor: String) -> String {
             let dayStr  = String(format: "%02d", day)
@@ -392,7 +416,8 @@ class CalendarManager {
             let key = ISO8601DateFormatter().string(from: date).prefix(10)
             let dayEvts = eventsByDayCache[String(key)] ?? []
             for ev in dayEvts {
-                if ev.isLocal { return localRed }
+                if ev.isLocal   { return localRed }
+                if ev.isWeather { return weatherBlue }
                 let c = colorForCalendar(ev.calendarName)
                 if !c.isEmpty { return c }
             }
@@ -462,7 +487,7 @@ class CalendarManager {
                 let timeDisplay = ev.isAllDay ? "[\(startStr)]" : "[\(startStr)\(endStr)]"
                 let calColor    = colorForCalendar(ev.calendarName)
                 let calLabel    = ev.isLocal ? "Local" : ev.calendarName
-                let labelColor  = ev.isLocal ? localRed : calColor
+                let labelColor  = ev.isLocal ? localRed : (ev.isWeather ? weatherBlue : calColor)
                 let calRaw      = calLabel.isEmpty ? "" : "(\(calLabel)) "
                 let calColored  = calLabel.isEmpty ? "" : "\(labelColor)(\(calLabel))\u{001B}[0m "
                 // METAR events store converted °F temps in notes — show in red after title
@@ -517,6 +542,7 @@ class CalendarManager {
                 executeExternalSyncHelper()
                 loadEvents()
                 loadLocalEvents()
+                loadWeatherHistory()
                 return
             } else if ch == "e" || ch == "E" {
                 keyboard.disableRawMode()
@@ -579,7 +605,54 @@ class CalendarManager {
         infoRow("Time",     timeStr)
         if !cleanLocation.isEmpty  { infoRow("Location", cleanLocation) }
         if !event.calendarName.isEmpty { infoRow("Calendar", event.calendarName) }
-        if !event.notes.isEmpty { infoRow("Notes",    event.notes) }
+        let hasWeather = event.decodedWeather != nil && !(event.decodedWeather ?? "").isEmpty
+        // For METAR/TAF events, `notes` holds only the converted °F temp — folded into the
+        // Conditions line below instead of a separate Notes row. Non-weather events keep the
+        // Notes row exactly as before.
+        if !event.notes.isEmpty && !hasWeather { infoRow("Notes", event.notes) }
+        if hasWeather {
+            let decoded = event.decodedWeather!
+            let tempRed   = "\u{001B}[1;31m"
+            let colorReset = "\u{001B}[0m"
+
+            var plainSegments = decoded.components(separatedBy: " · ")
+            var displaySegments = plainSegments
+            if !event.notes.isEmpty {
+                // Temp goes first, highlighted red to catch the eye
+                plainSegments.insert(event.notes, at: 0)
+                displaySegments.insert("\(tempRed)\(event.notes)\(colorReset)", at: 0)
+            }
+
+            // decoded can run long on a busy report (multiple wind/visibility/sky/phenomena
+            // segments) — infoRow prints one fixed-width row, so wrap on the " · " separators
+            // rather than let a long line overflow the box border. Track plain (for width
+            // math) and display (with the red temp escape codes) versions in parallel, since
+            // ANSI codes count toward String.count but aren't visible in the terminal.
+            let maxValueWidth = inner - 2 - 16  // matches infoRow's "  " + 16-char label layout
+            var wrapPlain: [String] = []
+            var wrapDisplay: [String] = []
+            var curPlain = ""
+            var curDisplay = ""
+            for (p, d) in zip(plainSegments, displaySegments) {
+                let candidatePlain = curPlain.isEmpty ? p : "\(curPlain) · \(p)"
+                if candidatePlain.count > maxValueWidth && !curPlain.isEmpty {
+                    wrapPlain.append(curPlain)
+                    wrapDisplay.append(curDisplay)
+                    curPlain = p
+                    curDisplay = d
+                } else {
+                    curPlain = candidatePlain
+                    curDisplay = curDisplay.isEmpty ? d : "\(curDisplay) · \(d)"
+                }
+            }
+            if !curPlain.isEmpty {
+                wrapPlain.append(curPlain)
+                wrapDisplay.append(curDisplay)
+            }
+            for i in 0..<wrapPlain.count {
+                infoRow(i == 0 ? "Conditions" : "", wrapPlain[i], colored: wrapDisplay[i])
+            }
+        }
         print("╰" + String(repeating: "─", count: inner) + "╯")
         print("")
         printStandardFooter(keys: "[E] Edit  |  [D] Delete  |  [A] Accounts  |  ESC: Back")
@@ -764,6 +837,24 @@ class CalendarManager {
             rebuildEventsByDayCache()
         } catch {
             CalendarDebugLogger.log("Local events load failed: \(error.localizedDescription)", category: "STORAGE-ERR")
+        }
+    }
+
+    func loadWeatherHistory() {
+        guard FileManager.default.fileExists(atPath: weatherHistoryURL.path) else { return }
+        do {
+            let data = try Data(contentsOf: weatherHistoryURL)
+            // metar_history.json is a dict keyed by "STATION|YYYY-MM-DD" — decode
+            // as [String: CalendarEvent] and take the values. This file is written
+            // exclusively by calendar_sync.py; swiftCALENDAR only ever reads it.
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let history = try decoder.decode([String: CalendarEvent].self, from: data)
+            events.removeAll { $0.isWeather }
+            events.append(contentsOf: history.values.map { var e = $0; e.isWeather = true; return e })
+            rebuildEventsByDayCache()
+        } catch {
+            CalendarDebugLogger.log("Weather history load failed: \(error.localizedDescription)", category: "STORAGE-ERR")
         }
     }
 

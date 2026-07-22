@@ -5,6 +5,12 @@ Reads calendar account configs from calendar_accounts.json (written by
 swiftCALENDAR's [A] Account Setup screen) and fetches ICS feeds for all
 enabled accounts. Writes merged events to calendar.json.
 
+METAR is persisted separately in metar_history.json (keyed by
+"STATION|YYYY-MM-DD") so past observations survive future syncs instead of
+being overwritten. History is capped at 6 months; anything older is pruned
+each sync. TAF is a forecast and stays ephemeral — refreshed into
+calendar.json on every sync like regular ICS events.
+
 calendar_accounts.json format:
 [
   {"name": "Outlook", "url": "https://...", "enabled": true, "colorIndex": 0},
@@ -27,6 +33,8 @@ from zoneinfo import ZoneInfo
 
 ACCOUNTS_FILE = "calendar_accounts.json"
 OUTPUT_FILE   = "calendar.json"
+WEATHER_FILE  = "metar_history.json"   # persistent — upserted, never wholesale-overwritten
+WEATHER_RETENTION_MONTHS = 6
 
 
 def load_accounts():
@@ -43,6 +51,186 @@ def load_accounts():
     except Exception as e:
         print(f"Error reading {ACCOUNTS_FILE}: {e}")
         return []
+
+
+def load_weather_history():
+    if not os.path.exists(WEATHER_FILE):
+        return {}
+    try:
+        with open(WEATHER_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Warning: could not read {WEATHER_FILE}: {e}")
+        return {}
+
+
+def save_weather_history(history):
+    try:
+        with open(WEATHER_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, indent=4, sort_keys=True)
+    except Exception as e:
+        print(f"Warning: could not write {WEATHER_FILE}: {e}")
+
+
+def prune_weather_history(history, months=WEATHER_RETENTION_MONTHS):
+    """Drop METAR entries older than `months` calendar months. Keyed by
+    'STATION|YYYY-MM-DD', so we just compare the date portion of the key."""
+    now = datetime.now()
+    # Calendar-correct month subtraction (not a fixed day count, so it doesn't
+    # drift across months of different lengths)
+    year  = now.year
+    month = now.month - months
+    while month <= 0:
+        month += 12
+        year  -= 1
+    cutoff = now.replace(year=year, month=month)
+
+    kept = {}
+    dropped = 0
+    for key, ev in history.items():
+        try:
+            day_str = key.split("|", 1)[1]
+            day_dt  = datetime.strptime(day_str, "%Y-%m-%d")
+        except (IndexError, ValueError):
+            kept[key] = ev  # malformed key — keep rather than silently lose data
+            continue
+        if day_dt >= cutoff:
+            kept[key] = ev
+        else:
+            dropped += 1
+    if dropped:
+        print(f"  Pruned {dropped} METAR entr{'y' if dropped == 1 else 'ies'} older than {months} months")
+    return kept
+
+
+def decode_wx_code(raw):
+    """Decode a raw METAR/TAF body into a human-readable phrase for the
+    detail view. The agenda/title keeps the raw code untouched — this is
+    additive, shown only when a person drills into the event.
+
+    Unrecognized tokens are skipped silently rather than echoed raw, since
+    the untouched raw string is already preserved in the event title.
+
+    Multi-token visibility fractions like "1 1/2SM" arrive as two separate
+    tokens ("1" then "1/2SM"). Combining them correctly needs lookahead we
+    don't do, so we report only the whole-mile part ("Visibility 1 statute
+    mile") and drop the fraction rather than misreport it — a standalone
+    fraction with no preceding whole number (e.g. plain "1/2SM") still
+    reports normally.
+    """
+    WX_INTENSITY = {"-": "Light ", "+": "Heavy "}
+    WX_DESCRIPTOR = {
+        "MI": "shallow ", "PR": "partial ", "BC": "patches of ", "DR": "low drifting ",
+        "BL": "blowing ", "SH": "showers of ", "TS": "thunderstorm with ", "FZ": "freezing ",
+    }
+    WX_PHENOM = {
+        "DZ": "drizzle", "RA": "rain", "SN": "snow", "SG": "snow grains", "IC": "ice crystals",
+        "PL": "ice pellets", "GR": "hail", "GS": "small hail", "UP": "unknown precipitation",
+        "BR": "mist", "FG": "fog", "FU": "smoke", "VA": "volcanic ash", "DU": "widespread dust",
+        "SA": "sand", "HZ": "haze", "PY": "spray", "PO": "dust/sand whirls", "SQ": "squall",
+        "FC": "funnel cloud", "SS": "sandstorm", "DS": "duststorm",
+    }
+    SKY_COVER = {
+        "SKC": "Clear", "CLR": "Clear", "NSC": "No significant cloud", "NCD": "No cloud detected",
+        "FEW": "Few clouds", "SCT": "Scattered clouds", "BKN": "Broken clouds", "OVC": "Overcast",
+    }
+
+    parts = []
+    tokens = raw.split()
+    idx = 0
+    while idx < len(tokens):
+        tok = tokens[idx]
+        idx += 1
+
+        # Timestamp and temp/dewpoint groups are surfaced elsewhere (title / Notes row)
+        if re.match(r'^\d{6}Z$', tok) or re.match(r'^M?\d{2}/M?\d{2}$', tok):
+            continue
+
+        # Wind: ddd(or VRB) ss[Ggg]KT
+        m = re.match(r'^(VRB|\d{3})(\d{2,3})(G(\d{2,3}))?KT$', tok)
+        if m:
+            direction, speed, _, gust = m.groups()
+            if direction == "000" and not gust:
+                parts.append("Calm")
+            else:
+                dirtext = "Variable" if direction == "VRB" else f"{direction}\u00b0"
+                gusttext = f", gusts {gust}kt" if gust else ""
+                parts.append(f"Wind {dirtext} at {speed}kt{gusttext}")
+            continue
+
+        # Visibility: P6SM, 10SM, 1/2SM
+        m = re.match(r'^(P)?(\d+(?:/\d+)?)SM$', tok)
+        if m:
+            plus, val = m.groups()
+            # Guard against the split "N N/DSM" whole+fraction case (e.g. "1 1/2SM" arrives
+            # as two tokens). If the immediately preceding token was a bare integer, this
+            # fraction is its continuation — report the whole-mile part only and drop the
+            # fraction rather than misreport it (see docstring).
+            is_bare_fraction = "/" in val
+            prev_tok = tokens[idx - 2] if idx >= 2 else None
+            prev_is_bare_int = bool(prev_tok and re.match(r'^\d+$', prev_tok))
+            if is_bare_fraction and prev_is_bare_int:
+                unit = "mile" if prev_tok == "1" else "miles"
+                parts.append(f"Visibility {prev_tok} statute {unit}")
+                continue
+            suffix = "+" if plus else ""
+            parts.append(f"Visibility {val}{suffix} statute miles")
+            continue
+        if tok == "CAVOK":
+            parts.append("Ceiling/visibility OK (10km+, no significant cloud/weather)")
+            continue
+        if re.match(r'^\d{4}$', tok) and tok != "0000":
+            # Bare 4-digit visibility in meters (non-US reports)
+            meters = int(tok)
+            parts.append("Visibility 10km+" if meters >= 9999 else f"Visibility {meters}m")
+            continue
+
+        # Sky cover: FEW/SCT/BKN/OVC + 3-digit height (x100ft), optional CB/TCU suffix
+        m = re.match(r'^(FEW|SCT|BKN|OVC)(\d{3})(CB|TCU)?$', tok)
+        if m:
+            cover, height, cloud_type = m.groups()
+            height_ft = int(height) * 100
+            typetext = f" ({'cumulonimbus' if cloud_type == 'CB' else 'towering cumulus'})" if cloud_type else ""
+            parts.append(f"{SKY_COVER[cover]} at {height_ft:,}ft{typetext}")
+            continue
+        if tok in SKY_COVER:
+            parts.append(SKY_COVER[tok])
+            continue
+        m = re.match(r'^VV(\d{3})$', tok)
+        if m:
+            parts.append(f"Vertical visibility {int(m.group(1)) * 100:,}ft (sky obscured)")
+            continue
+
+        # Altimeter: A2992 (inHg) or Q1013 (hPa)
+        m = re.match(r'^A(\d{4})$', tok)
+        if m:
+            parts.append(f"Altimeter {int(m.group(1))/100:.2f} inHg")
+            continue
+        m = re.match(r'^Q(\d{4})$', tok)
+        if m:
+            parts.append(f"Altimeter {m.group(1)} hPa")
+            continue
+
+        # Weather phenomena: optional intensity/vicinity + descriptor(s) + phenomenon(s)
+        wx_tok = tok
+        prefix = ""
+        if wx_tok.startswith("VC"):
+            prefix = "In the vicinity: "
+            wx_tok = wx_tok[2:]
+        elif wx_tok and wx_tok[0] in "-+":
+            prefix = WX_INTENSITY[wx_tok[0]]
+            wx_tok = wx_tok[1:]
+        codes = [wx_tok[i:i+2] for i in range(0, len(wx_tok), 2)]
+        if wx_tok and len(wx_tok) % 2 == 0 and all(c in WX_DESCRIPTOR or c in WX_PHENOM for c in codes):
+            desc = "".join(WX_DESCRIPTOR.get(c, "") for c in codes)
+            phen = " and ".join(WX_PHENOM[c] for c in codes if c in WX_PHENOM)
+            if phen:
+                parts.append(f"{prefix}{desc}{phen}".strip().capitalize())
+                continue
+
+        # Unrecognized token — skip silently, raw string already preserved in title
+
+    return " \u00b7 ".join(parts)
 
 
 def fetch_metar(station_id, calendar_label):
@@ -83,16 +271,17 @@ def fetch_metar(station_id, calendar_label):
         start = event_date.strftime("%Y-%m-%dT12:00:00Z")
         end   = (event_date + timedelta(days=1)).strftime("%Y-%m-%dT12:00:00Z")
         return {
-            "id":           str(uuid.uuid4()).upper(),
-            "title":        title,
-            "location":     station_id,
-            "startTime":    start,
-            "endTime":      end,
-            "notes":        temp_suffix,
-            "tags":         [],
-            "calendarName": calendar_label,
-            "isAllDay":     True,
-            "isLocal":      False,
+            "id":             str(uuid.uuid4()).upper(),
+            "title":          title,
+            "location":       station_id,
+            "startTime":      start,
+            "endTime":        end,
+            "notes":          temp_suffix,
+            "tags":           [],
+            "calendarName":   calendar_label,
+            "isAllDay":       True,
+            "isLocal":        False,
+            "decodedWeather": decode_wx_code(metar_short),
         }
 
     events = []
@@ -118,6 +307,14 @@ def fetch_metar(station_id, calendar_label):
 
     return events
 
+
+def sync_metar_account(station_id, calendar_label, history):
+    """Fetch today's/yesterday's METAR and upsert into the persistent history
+    dict, keyed by station+day. Days not re-fetched this run are left alone —
+    this is what makes past observations survive future syncs."""
+    for ev in fetch_metar(station_id, calendar_label):
+        day_key = ev["startTime"][:10]  # YYYY-MM-DD
+        history[f"{station_id.upper()}|{day_key}"] = ev
 
 
 def fetch_nws_temps_tomorrow(lat, lon):
@@ -236,16 +433,17 @@ def fetch_taf(station_id, calendar_label, **kwargs):
     tmrw_end   = (tomorrow + timedelta(days=2)).strftime("%Y-%m-%dT12:00:00Z")
 
     return [{
-        "id":           str(uuid.uuid4()).upper(),
-        "title":        full_title,
-        "location":     station_id,
-        "startTime":    tmrw_start,
-        "endTime":      tmrw_end,
-        "notes":        temp_f_str,   # red display in Swift agenda, same as METAR
-        "tags":         [],
-        "calendarName": calendar_label,
-        "isAllDay":     True,
-        "isLocal":      False,
+        "id":             str(uuid.uuid4()).upper(),
+        "title":          full_title,
+        "location":       station_id,
+        "startTime":      tmrw_start,
+        "endTime":        tmrw_end,
+        "notes":          temp_f_str,   # red display in Swift agenda, same as METAR
+        "tags":           [],
+        "calendarName":   calendar_label,
+        "isAllDay":       True,
+        "isLocal":        False,
+        "decodedWeather": decode_wx_code(taf_line),
     }]
 
 
@@ -419,20 +617,35 @@ def perform_sync():
     accounts = load_accounts()
     if not accounts:
         return False
+
+    weather_history = load_weather_history()
+    weather_touched = False
     all_events = []
+
     for account in accounts:
         acct_type = account.get("type", "ics").lower()
         if acct_type == "metar":
-            events = fetch_metar(account["url"], account["name"])
+            # METAR is persisted separately (metar_history.json) so past
+            # observations survive future syncs instead of being overwritten.
+            sync_metar_account(account["url"], account["name"], weather_history)
+            weather_touched = True
         elif acct_type == "taf":
-            events = fetch_taf(account["url"], account["name"],
-                               lat=account.get("lat"), lon=account.get("lon"))
+            # Forecast — always ephemeral, refreshed each sync
+            all_events.extend(fetch_taf(account["url"], account["name"],
+                                         lat=account.get("lat"), lon=account.get("lon")))
         else:
-            events = fetch_and_parse_feed(account["url"], account["name"], start_filter, end_filter)
-        all_events.extend(events)
-    if not all_events:
+            all_events.extend(fetch_and_parse_feed(account["url"], account["name"],
+                                                     start_filter, end_filter))
+
+    if weather_touched:
+        weather_history = prune_weather_history(weather_history)
+        save_weather_history(weather_history)
+        print(f"Weather history: {len(weather_history)} day(s) on file in {WEATHER_FILE}")
+
+    if not all_events and not weather_touched:
         print("\nNo events found across all accounts in this window.")
         return False
+
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(all_events, f, indent=4)
     print(f"\nSynced {len(all_events)} event(s) from {len(accounts)} account(s) to {OUTPUT_FILE}")
