@@ -1108,7 +1108,7 @@ class CalendarManager {
             print("├" + String(repeating: "─", count: inner) + "┤")
 
             if calendarAccounts.isEmpty {
-                let msg = "  No accounts configured. Press [N] to add your first calendar feed."
+                let msg = "  No accounts configured. Press [A] to add your first calendar feed."
                 print("│\(msg)\(String(repeating: " ", count: inner - msg.count))│")
             } else {
                 for (i, acct) in calendarAccounts.enumerated() {
