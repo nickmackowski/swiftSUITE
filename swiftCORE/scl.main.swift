@@ -85,12 +85,12 @@ func setupFirstTimeCredentials(snapshot: SystemSnapshot) {
     printHeader(snapshot: snapshot, username: "UNKNOWN")
     let inner = 118
     print("╭" + String(repeating: "─", count: inner) + "╮")
-    func centeredLine(_ text: String) {
+    func centeredLine(_ text: String, colored: String? = nil) {
         let p = max(0, (inner - text.count) / 2)
-        print("│" + String(repeating: " ", count: p) + text + String(repeating: " ", count: inner - p - text.count) + "│")
+        print("│" + String(repeating: " ", count: p) + (colored ?? text) + String(repeating: " ", count: inner - p - text.count) + "│")
     }
     centeredLine("")
-    centeredLine("S W I F T C O R E")
+    centeredLine(swiftCoreBannerPlain(), colored: swiftCoreBannerColored())
     centeredLine("")
     centeredLine("─── First Launch Setup ───")
     centeredLine("")
@@ -265,11 +265,18 @@ func printHeader(snapshot: SystemSnapshot, username: String) {
     let dateStr = dateFmt.string(from: now)
     let timeStr = timeFmt.string(from: now).uppercased()
 
-    let titleText = "swiftCORE v2.5.07.11c"  // plain for layout; c colored below
+    let titleText = "swiftCORE v2.5.07.11c"  // plain for layout; colored below
     let sidePad = (innerWidth - titleText.count) / 2
     var titleChars = Array(repeating: " ", count: innerWidth)
     for (i, ch) in dateStr.enumerated() where i < innerWidth { titleChars[i] = String(ch) }
     for (i, ch) in titleText.enumerated() { titleChars[sidePad + i] = String(ch) }
+    // Color "swift" to match the login banner (swiftCoreBannerColored()) — per-letter accents.
+    // CORE and the rest of the line stay exactly as they were: plain, uncolored.
+    titleChars[sidePad + 0] = "\u{001B}[1;38;5;221ms\u{001B}[0m"
+    titleChars[sidePad + 1] = "\u{001B}[1;38;5;208mw\u{001B}[0m"
+    titleChars[sidePad + 2] = "\u{001B}[1;38;5;141mi\u{001B}[0m"
+    titleChars[sidePad + 3] = "\u{001B}[1;38;5;80mf\u{001B}[0m"
+    titleChars[sidePad + 4] = "\u{001B}[1;38;5;69mt\u{001B}[0m"
     // Color the trailing 'c' orange without affecting layout positions
     titleChars[sidePad + titleText.count - 1] = "\u{001B}[38;5;208mc\u{001B}[0m"
     let timeStart = innerWidth - timeStr.count
@@ -294,6 +301,26 @@ func printHeader(snapshot: SystemSnapshot, username: String) {
     print("╰" + String(repeating: "─", count: innerWidth) + "╯")
 }
 
+/// Plain (uncolored) banner text, used for width/centering math — ANSI escape codes count
+/// toward String.count but aren't visible in the terminal, so padding must be computed against
+/// this version, never against swiftCoreBannerColored().
+func swiftCoreBannerPlain() -> String {
+    "s w i f t C O R E"
+}
+
+/// "swift" — each letter gets its own accent color (gold/orange/purple/teal/blue); "CORE" is
+/// bold white. Shared by the login screen, the post-login app-select screen, and the
+/// first-launch setup screen so all three stay in sync if the palette changes later.
+func swiftCoreBannerColored() -> String {
+    let goldS   = "\u{001B}[1;38;5;221ms\u{001B}[0m"
+    let orangeW = "\u{001B}[1;38;5;208mw\u{001B}[0m"
+    let purpleI = "\u{001B}[1;38;5;141mi\u{001B}[0m"
+    let tealF   = "\u{001B}[1;38;5;80mf\u{001B}[0m"
+    let blueT   = "\u{001B}[1;38;5;69mt\u{001B}[0m"
+    let corePart = "\u{001B}[97mC O R E\u{001B}[0m"
+    return goldS + " " + orangeW + " " + purpleI + " " + tealF + " " + blueT + " " + corePart
+}
+
 /// Middle box — swiftCORE title + login fields (pre-auth) or app content (post-auth).
 /// On the login screen, showLoginPrompt is true. After launch, each app draws this itself.
 func printLoginBox(lastLoginStr: String? = nil, message: String? = nil, messageIsError: Bool = false) {
@@ -302,10 +329,10 @@ func printLoginBox(lastLoginStr: String? = nil, message: String? = nil, messageI
     // Blank line above title
     print("│" + String(repeating: " ", count: innerWidth) + "│")
 
-    // S W I F T C O R E — bold cyan, centered inside the box
-    let title = "S W I F T C O R E"
+    // s w i f t C O R E — swift in per-letter accent colors, CORE in bold white, centered
+    let title = swiftCoreBannerPlain()
     let titlePad = (innerWidth - title.count) / 2
-    print("│" + String(repeating: " ", count: titlePad) + "\u{001B}[1;36m" + title + "\u{001B}[0m" + String(repeating: " ", count: innerWidth - titlePad - title.count) + "│")
+    print("│" + String(repeating: " ", count: titlePad) + swiftCoreBannerColored() + String(repeating: " ", count: innerWidth - titlePad - title.count) + "│")
 
     // Blank line below title
     print("│" + String(repeating: " ", count: innerWidth) + "│")
@@ -595,12 +622,12 @@ func main() {
         print("\u{001B}[2J\u{001B}[H", terminator: "")
         printHeader(snapshot: snapshot, username: currentUser ?? "UNKNOWN")
 
-        // Middle box — bold cyan title, same layout as the login screen
-        let title2 = "S W I F T C O R E"
+        // Middle box — same colored title as the login screen (shared helper keeps them in sync)
+        let title2 = swiftCoreBannerPlain()
         let title2Pad = (innerWidth - title2.count) / 2
         print("╭" + String(repeating: "─", count: innerWidth) + "╮")
         print("│" + String(repeating: " ", count: innerWidth) + "│")
-        print("│" + String(repeating: " ", count: title2Pad) + "\u{001B}[1;36m" + title2 + "\u{001B}[0m" + String(repeating: " ", count: innerWidth - title2Pad - title2.count) + "│")
+        print("│" + String(repeating: " ", count: title2Pad) + swiftCoreBannerColored() + String(repeating: " ", count: innerWidth - title2Pad - title2.count) + "│")
         print("│" + String(repeating: " ", count: innerWidth) + "│")
         print("├" + String(repeating: "─", count: innerWidth) + "┤")
         let prompt = "Select an application from the menu below."

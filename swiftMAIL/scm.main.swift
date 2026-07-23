@@ -2373,7 +2373,7 @@ class MailManager {
     
     func injectMockDataIfEmpty() {
         guard accounts.isEmpty else { return }
-        let primaryMock = EmailAccount(emailAddress: "account.name@email.com", type: .google)
+        let primaryMock = EmailAccount(emailAddress: "nick.mackowski@gmail.com", type: .google)
         accounts = [primaryMock]
         
         accounts[0].folders[0].messages = [
