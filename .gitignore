@@ -1,0 +1,46 @@
+# ── swiftSUITE .gitignore ──────────────────────────────────────────────────
+# Prevents personal data, credentials, and build artifacts from being
+# accidentally committed to GitHub.
+
+# App data files — contain personal/encrypted data
+*.json
+*.csv
+*.backup
+
+# Auth and session files
+.core_credentials
+.core_session
+# Any per-app session file (e.g. .core_session, .contacts_session, .vault_session)
+*_session
+
+# Logs and admin state
+swiftLOGS/
+logs/
+.swiftadmin/
+
+# Intermediate build artifacts (lipo inputs)
+*_x86
+*_arm64
+
+# swiftCT build scratch directories (SPM equivalent of the intermediates
+# above — same reasoning: these bake in absolute paths and break if
+# committed/cloned to a different location)
+swiftCT/.build-arm64/
+swiftCT/.build-x86_64/
+swiftCT/.build/
+
+# macOS system files
+.DS_Store
+.Spotlight-V100
+.Trashes
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
