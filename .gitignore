@@ -4,6 +4,7 @@
 
 # App data files — contain personal/encrypted data
 *.json
+!swiftCALENDAR/known_airports.json
 *.csv
 *.backup
 
