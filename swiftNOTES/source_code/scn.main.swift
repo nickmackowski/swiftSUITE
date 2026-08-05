@@ -726,6 +726,12 @@ class NotesManager {
             let pipe = Pipe()
             process.standardOutput = pipe
             process.standardError = pipe
+            // Explicitly redirected rather than left to inherit the parent's stdin — this
+            // script never needs interactive input, and sharing the same tty as the app's own
+            // raw-mode terminal reading is a real risk, not just theoretical. Found missing
+            // here during a suite-wide audit — every equivalent call site in swiftCALENDAR
+            // already had this, this one didn't.
+            process.standardInput = FileHandle.nullDevice
             
             var succeeded = false
             do {

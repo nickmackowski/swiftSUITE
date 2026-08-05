@@ -260,6 +260,7 @@ struct SystemSnapshot {
             let p = Process(); let pipe = Pipe()
             p.executableURL = URL(fileURLWithPath: "/usr/bin/env")
             p.arguments = args; p.standardOutput = pipe
+            p.standardInput = FileHandle.nullDevice
             try? p.run(); p.waitUntilExit()
             return String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -624,6 +625,7 @@ func runBackupUtility(snapshot: SystemSnapshot) {
     process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
     process.arguments = ["-czf", destURL.path, "--exclude=*.tar.gz",
                          "--exclude=swiftCORE Suite Backup", "-C", parentURL.path, "."]
+    process.standardInput = FileHandle.nullDevice
     do {
         try process.run(); process.waitUntilExit()
         if process.terminationStatus == 0 {

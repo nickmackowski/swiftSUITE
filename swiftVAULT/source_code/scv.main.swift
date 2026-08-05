@@ -804,6 +804,11 @@ class PasswordVaultManager {
             checkProcess.executableURL = URL(fileURLWithPath: "/usr/bin/pbpaste")
             let outPipe = Pipe()
             checkProcess.standardOutput = outPipe
+            // pbpaste needs no input at all — explicitly redirected rather than left to inherit
+            // the parent's stdin, same reasoning as the pbcopy calls elsewhere in this function.
+            // This one runs inside Thread.detachNewThread too, the exact pattern found missing
+            // this same redirect in swiftNOTES during a suite-wide audit.
+            checkProcess.standardInput = FileHandle.nullDevice
             guard (try? checkProcess.run()) != nil else { return }
             checkProcess.waitUntilExit()
             let currentClipboard = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
@@ -1208,7 +1213,7 @@ class PasswordVaultManager {
     
     func showViewCredentialScreen(index: Int) {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MM/dd/yy HH:mm"
+        formatter.dateFormat = "MM/dd/yy hh:mm a"
         keyboard.enableRawMode()
 
         while true {
@@ -1303,47 +1308,6 @@ class PasswordVaultManager {
                 }
             default: break
             }
-        }
-    }
-    
-    /// Returns true if the caller should stay on this credential card and redraw (toggle/copy —
-    /// no navigation happened), or false if it should exit its loop (edit/delete/back all call
-    /// navigate()/goBack(), moving the screen stack elsewhere).
-    private func executeCardAction(choiceIndex: Int, recordIndex: Int) -> Bool {
-        let cred = credentials[recordIndex]
-        switch choiceIndex {
-        case 0:
-            showPasswordPlaintext.toggle()
-            return true
-        case 1:
-            if let plaintext = try? VaultCrypto.decrypt(cred.encryptedPassword, key: vaultKey) {
-                copyPasswordToClipboard(plaintext)
-                lastStatusMessage = "Password copied — clipboard clears automatically in 20s."
-                lastStatusWasError = false
-                VaultDebugLogger.log("Password copied to clipboard for service (redacted)", category: "VAULT")
-            } else {
-                lastStatusMessage = "Could not decrypt password to copy."
-                lastStatusWasError = true
-            }
-            return true
-        case 2:
-            showPasswordPlaintext = false
-            navigate(to: .editCredential(index: recordIndex))
-            return false
-        case 3:
-            showPasswordPlaintext = false
-            print("\n Delete this record permanently? (y/n): ", terminator: "")
-            if let confirm = readLine(), confirm.lowercased() == "y" {
-                credentials.remove(at: recordIndex)
-                saveVault()
-                VaultDebugLogger.log("Credential deleted for service (redacted)", category: "VAULT")
-            }
-            goBack()
-            return false
-        default:
-            showPasswordPlaintext = false
-            goBack()
-            return false
         }
     }
     

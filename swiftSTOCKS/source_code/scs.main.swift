@@ -147,12 +147,12 @@ class StockKeyboardReader {
         let bytesRead = read(STDIN_FILENO, &buffer, 3)
         if bytesRead <= 0 { return .other("\0") }
         
-        if buffer[0] == 27 { 
+        if buffer[0] == 27 {
             if bytesRead == 1 { return .escape }
-            if buffer[1] == 91 { 
+            if buffer[1] == 91 {
                 switch buffer[2] {
-                case 65: return .up    
-                case 66: return .down  
+                case 65: return .up
+                case 66: return .down
                 default: return .escape
                 }
             }
@@ -253,7 +253,7 @@ class StocksManager {
     /// exactly (brief, visible, on-demand — not the same problem as blocking the very first
     /// screen render).
     func syncLiveQuotes(isSilent: Bool = false, blocking: Bool = true) {
-        if stocks.isEmpty { 
+        if stocks.isEmpty {
             let formatter = DateFormatter()
             formatter.dateFormat = "hh:mm:ss a"
             lastDataPullTimestamp = formatter.string(from: Date()).uppercased()
@@ -266,7 +266,7 @@ class StocksManager {
                 syncJustFinished = true
                 stocksMutationLock.unlock()
             }
-            return 
+            return
         }
         
         if !isSilent {
@@ -410,10 +410,26 @@ class StocksManager {
     func navigate(to screen: StockScreen) { screenStack.append(screen) }
     func goBack() { if screenStack.count > 1 { screenStack.removeLast() } }
     
+    /// Wraps readLine() with ESC-to-cancel support — returns nil if the user enters a literal
+    /// ESC character or types "esc" (a discoverable fallback, since a genuine ESC keypress isn't
+    /// always reliably captured by canonical-mode readLine() depending on terminal driver).
+    /// Matches the identical pattern already used in swiftCONTACTS/swiftNOTES/swiftVAULT — this
+    /// was a real, confirmed gap in swiftSTOCKS specifically: showAddNewStockScreen() previously
+    /// used plain readLine() throughout with no cancel affordance at all.
+    func getStringInput(prompt: String, defaultValue: String? = nil) -> String? {
+        print(prompt, terminator: "")
+        guard let input = readLine() else { return defaultValue }
+        if input == "\u{1B}" || input.lowercased() == "esc" {
+            goBack()
+            return nil
+        }
+        return input.isEmpty ? defaultValue : input
+    }
+    
     func run() {
         while running {
             guard let currentScreen = screenStack.last else { running = false; break }
-            print("\u{001B}[2J\u{001B}[1;1H", terminator: "") 
+            print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             switch currentScreen {
             case .workspace: showWorkspace()
             case .addNewStock: showAddNewStockScreen()
@@ -895,19 +911,21 @@ class StocksManager {
         printStandardHeader()
         centerSubtitle("DATA ENTRY: NEW STOCK POSITION")
         print("  " + String(repeating: "─", count: 118))
+        print(" (Type 'esc' + Enter, or press Escape + Enter, to cancel)")
         print("")
         
-        print(" Enter Stock Symbol (e.g. AAPL): ", terminator: "")
-        guard let symbol = readLine()?.uppercased(), !symbol.trimmingCharacters(in: .whitespaces).isEmpty else { goBack(); return }
+        guard let symbolRaw = getStringInput(prompt: " Enter Stock Symbol (e.g. AAPL): ") else { return }
+        let symbol = symbolRaw.uppercased()
+        guard !symbol.trimmingCharacters(in: .whitespaces).isEmpty else { goBack(); return }
         
-        print(" Number of Shares: ", terminator: "")
-        guard let sharesStr = readLine(), let shares = Double(sharesStr) else { goBack(); return }
+        guard let sharesStr = getStringInput(prompt: " Number of Shares: ") else { return }
+        guard let shares = Double(sharesStr) else { print(" Not a valid number."); goBack(); return }
         
-        print(" Purchase Price ($): ", terminator: "")
-        guard let priceStr = readLine(), let purchasePrice = Double(priceStr) else { goBack(); return }
+        guard let priceStr = getStringInput(prompt: " Purchase Price ($): ") else { return }
+        guard let purchasePrice = Double(priceStr) else { print(" Not a valid number."); goBack(); return }
         
-        print(" Stock Classification [l] Live Stock / [m] Mock (Paper) Stock: ", terminator: "")
-        guard let typeStr = readLine()?.lowercased() else { goBack(); return }
+        guard let typeStrRaw = getStringInput(prompt: " Stock Classification [l] Live Stock / [m] Mock (Paper) Stock: ") else { return }
+        let typeStr = typeStrRaw.lowercased()
         let isPaper = (typeStr == "m")
         
         var newPosition = StockPosition(symbol: symbol, shares: shares, purchasePrice: purchasePrice, isPaperStock: isPaper)

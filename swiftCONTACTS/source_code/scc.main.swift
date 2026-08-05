@@ -1171,7 +1171,7 @@ class ContactsManager {
     
     func showViewContactScreen(index: Int) {
         let formatter = DateFormatter()
-        formatter.dateFormat = "MM/dd/yy HH:mm"
+        formatter.dateFormat = "MM/dd/yy hh:mm a"
         keyboard.enableRawMode()
 
         while true {

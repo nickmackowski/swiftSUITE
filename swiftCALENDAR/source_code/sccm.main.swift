@@ -274,8 +274,15 @@ class CalendarManager {
     let fileURL = resolveAppDataDirectory().appendingPathComponent("calendar.json")
 
     func colorForCalendar(_ name: String) -> String {
-        guard let acct = calendarAccounts.first(where: { $0.name == name }),
-              acct.colorIndex >= 0 && acct.colorIndex < calendarColorPalette.count else { return "" }
+        guard let acct = calendarAccounts.first(where: { $0.name == name }) else { return "" }
+        // METAR/TAF accounts always render blue regardless of colorIndex — matching the same
+        // reserved-color logic used for actual event rendering in showMonthView(). Checked here
+        // too so the account setup screen's name/color-tag display is consistent with reality,
+        // rather than showing "None" for a color that's actually always applied.
+        if acct.type == "metar" || acct.type == "taf" {
+            return "\u{001B}[1;38;5;75m"
+        }
+        guard acct.colorIndex >= 0 && acct.colorIndex < calendarColorPalette.count else { return "" }
         return calendarColorPalette[acct.colorIndex].ansi
     }
 
@@ -489,7 +496,10 @@ class CalendarManager {
         let dimText    = "\u{001B}[2m"
         let brightText = "\u{001B}[1;97m"
         let localRed    = "\u{001B}[1;31m"  // shared with the agenda list below so grid/agenda always match
-        let weatherBlue = "\u{001B}[1;34m"  // same — shared between grid and agenda, METAR history entries
+        let weatherBlue = "\u{001B}[1;38;5;75m"  // same — shared between grid and agenda, METAR history entries.
+                                                  // Lighter sky-blue (256-color) rather than standard ANSI
+                                                  // blue (1;34m) — the old shade was hard to read against a
+                                                  // black terminal background.
         let birthdayPurple = "\u{001B}[38;5;135m"  // same — shared between grid and agenda, birthday overlay
         let dueYellow = "\u{001B}[1;33m"  // same — shared between grid and agenda, due-date overlay
 
@@ -891,7 +901,14 @@ class CalendarManager {
         guard let targetDate = calendar.date(from: targetComponents) else { return [] }
         
         let matches = eventsByDayCache[dayKey(targetDate)] ?? []
-        return matches.sorted(by: { $0.startTime < $1.startTime })
+        // Weather entries (METAR/TAF) always sort first, regardless of count — everything else
+        // keeps its existing startTime ordering. Both are all-day events sharing the same
+        // startTime, so without this, their relative order was really just whatever order they
+        // happened to load in, not a deliberate choice.
+        return matches.sorted { a, b in
+            if a.isWeather != b.isWeather { return a.isWeather }
+            return a.startTime < b.startTime
+        }
     }
     
     // MARK: - External Process Controller Task
@@ -1716,8 +1733,14 @@ class CalendarManager {
                     let ptr     = i == selectedIdx ? " -> " : "    "
                     let status  = acct.enabled ? "\u{001B}[1;32m●\u{001B}[0m Active  " : "\u{001B}[2m○ Off    \u{001B}[0m"
                     let color   = colorForCalendar(acct.name)
-                    let colName = acct.colorIndex >= 0 && acct.colorIndex < calendarColorPalette.count
-                        ? calendarColorPalette[acct.colorIndex].name : "None"
+                    let colName: String
+                    if acct.type == "metar" || acct.type == "taf" {
+                        colName = "Blue"
+                    } else if acct.colorIndex >= 0 && acct.colorIndex < calendarColorPalette.count {
+                        colName = calendarColorPalette[acct.colorIndex].name
+                    } else {
+                        colName = "None"
+                    }
                     let urlTrunc = acct.url.count > 60 ? String(acct.url.prefix(57)) + "..." : acct.url
                     let namePart = "\(ptr)\(color)\(acct.name)\u{001B}[0m"
                     let namePlain = "\(ptr)\(acct.name)"
