@@ -48,7 +48,7 @@ pip3 install rich cryptography
 [2]  Build Single App(s)
 
 ── SECURITY ────────────────────────────
-[3]  Change Master Password    ← Coming in v3.0
+[3]  Change Master Password    Use with Caution - Back up Data First
 
 ── DATA ────────────────────────────────
 [4]  Export All Data
