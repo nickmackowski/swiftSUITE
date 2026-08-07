@@ -26,7 +26,8 @@ On first launch swiftCORE detects that no credentials exist and walks you throug
 
 **Choose a strong password you will remember.** Changing it later requires the swiftADMIN toolkit.
 
-<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/d52e22e7-250f-4e1f-9849-d1c3f55600d8" />
+<img width="2314" height="1688" alt="image" src="https://github.com/user-attachments/assets/788e00b7-9a25-4ddf-8408-4e43390db4c7" />
+
 
 ---
 
