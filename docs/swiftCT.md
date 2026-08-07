@@ -105,7 +105,7 @@ regenerate from the new artwork.
   while they're already in swiftCT, kept from an earlier design (see
   below) purely because it was useful to have around, not because
   swiftSUITE itself needs it.
-- **Terminal → Telemetry** — a small panel with live network throughput
+- **Terminal → System Info** — a small panel with live network throughput
   graphs (sparkline history + current percent bars). Added purely as a
   fun extra, not tied to swiftSUITE functionality in any way.
 - Standard macOS app menu — About, Hide, Hide Others, Quit — all present
