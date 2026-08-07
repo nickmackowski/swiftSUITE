@@ -30,7 +30,7 @@ Fun Fact: Claude AI even helped write this README and most of the supporting doc
 | swiftMAIL | `swiftMAIL` | IMAP/SMTP email client |
 | swiftCT | `swiftCT` | Terminal Launcher for swiftCORE |
 
-`swiftADMIN` is a companion tool — a Python toolkit (not a compiled Swift binary) for building, ttyd management, and factory reset. `swiftCT` is a ninth companion tool — a native macOS terminal launcher for swiftCORE, no browser required. See their own sections further down.
+`swiftADMIN` is a companion tool — a Python toolkit (not a compiled Swift binary) for building, ttyd management, and factory reset.
 
 ---
 
