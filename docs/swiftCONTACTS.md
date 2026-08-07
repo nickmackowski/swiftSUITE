@@ -2,7 +2,8 @@
 
 swiftCONTACTS is an AES-256 encrypted personal contact manager. Contact details are stored locally and encrypted at rest. It integrates with swiftMAIL for name lookup when composing email, and with swiftCALENDAR for automatic birthday reminders.
 
-<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/69aa2a27-e6d9-480e-b34b-915adbe4dd7c" />
+<img width="2314" height="1688" alt="image" src="https://github.com/user-attachments/assets/579da69e-0847-40ca-81df-a068700d4f50" />
+
 
 ---
 
