@@ -120,6 +120,8 @@ cd swiftCORE
 
 On first run, swiftCORE prompts you to create a username and password. This password encrypts your Notes, Vault, and Contacts data.
 
+<img width="2314" height="1688" alt="image" src="https://github.com/user-attachments/assets/f07241c1-f696-4a40-98a7-f26df76b2b79" />
+
 ---
 
 ## Directory Structure
