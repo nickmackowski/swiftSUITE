@@ -26,7 +26,7 @@ On first launch swiftCORE detects that no credentials exist and walks you throug
 
 **Choose a strong password you will remember.** Changing it later requires the swiftADMIN toolkit.
 
-<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/d52e22e7-250f-4e1f-9849-d1c3f55600d8" />
+<img width="2314" height="1688" alt="image" src="https://github.com/user-attachments/assets/788e00b7-9a25-4ddf-8408-4e43390db4c7" />
 
 ---
 
@@ -37,11 +37,11 @@ login: _          Password: _
 Last login: THU JUL 17 09:21:25 2026
 ```
 
-Type your username, press Tab or Enter, then type your password. The password field does not echo characters.
+Type your username, press Enter, then type your password. The password field does not echo characters.
 
 On successful login, swiftCORE writes a session key to `.core_session` (valid for 30 minutes) and presents the main navigation screen — a centered banner reading **swiftCORE**, with every letter individually colored as a small nod to it being the launcher for the whole suite.
 
-<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/29e97210-1132-4989-b230-bef4228567e1" />
+<img width="2314" height="1688" alt="image" src="https://github.com/user-attachments/assets/bd387eb7-a956-4b05-b5ab-4d9781b723fb" />
 
 ## System Telemetry
 
