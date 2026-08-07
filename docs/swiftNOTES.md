@@ -2,7 +2,8 @@
 
 swiftNOTES is an AES-256 encrypted personal notebook. Notes are stored locally and encrypted at rest — nobody can read them without your swiftCORE password. Beyond typing notes directly into the app, swiftNOTES can also capture notes (and calendar entries — see swiftCALENDAR) sent remotely by email or text, and supports due dates that surface automatically on swiftCALENDAR's month view.
 
-<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/ee6f88be-418d-4dd5-90db-4b68f04024cc" />
+<img width="2314" height="1688" alt="image" src="https://github.com/user-attachments/assets/9382c132-913b-47c1-9fc4-68a178cac81e" />
+
 
 ---
 
