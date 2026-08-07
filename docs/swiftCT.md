@@ -117,7 +117,7 @@ swiftCT's first design (under an earlier name, swiftLT — "local terminal")
 worked differently: it SSH'd in the background into a single always-on Mac
 running the whole swiftSUITE, so the same suite could be reached from
 multiple laptops. That central-machine-via-SSH architecture was dropped
-during design discussion, in favor of a much simpler approach: Syncthing
+in favor of a much simpler approach: Syncthing
 was already keeping each laptop's Documents folder in sync for unrelated
 reasons, so rather than SSH-ing into one machine's copy of the suite, each
 laptop just runs its own local copy — with Syncthing quietly syncing the
