@@ -32,7 +32,7 @@ from rich.text import Text
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 VERSION       = "3.01"
-FIXED_WIDTH   = 68
+FIXED_WIDTH   = 73
 LOGS_ROOT     = "swiftLOGS"
 BUILD_LOG_DIR = "swiftBUILD"
 MAX_LOGS      = 5
@@ -159,7 +159,7 @@ def main_menu():
         menu.add_row("[2]", "Build Selected App(s)")
         menu.add_row("", "")
         menu.add_row("", "[bold dim]── SECURITY ────────────────────────────[/bold dim]")
-        menu.add_row("[3]", "Change Master Password  [bold red]Coming in v3.0[/bold red]")
+        menu.add_row("[3]", "Change Master Password  [bold red]Use with Caution - Back up Data First[/bold red]")
         menu.add_row("", "")
         menu.add_row("", "[bold dim]── DATA ────────────────────────────────[/bold dim]")
         menu.add_row("[4]", "Export All Data  [dim](plaintext backup)[/dim]")
