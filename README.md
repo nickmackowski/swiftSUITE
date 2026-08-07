@@ -25,6 +25,7 @@ Fun Fact: Claude AI even helped write this README and most of the supporting doc
 | swiftCONTACTS | `swiftCONTACTS` | AES-256 encrypted contact manager |
 | swiftCALENDAR | `swiftCALENDAR` | Calendar with ICS, METAR, and TAF support, plus live birthday and due-date overlays |
 | swiftMAIL | `swiftMAIL` | IMAP/SMTP email client |
+| swiftCT | `swiftCT` | Terminal Launcher for swiftCORE |
 
 `swiftADMIN` is an eighth companion tool — a Python toolkit (not a compiled Swift binary) for building, ttyd management, and factory reset. `swiftCT` is a ninth companion tool — a native macOS terminal launcher for swiftCORE, no browser required. See their own sections further down.
 
