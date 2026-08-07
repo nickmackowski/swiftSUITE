@@ -6,8 +6,6 @@ import Glibc
 import Darwin
 #endif
 
-// swiftCT v3.01.08.04c
-
 // ─────────────────────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────────────────────
@@ -149,6 +147,21 @@ func locateSwiftSuiteRoot() -> URL? {
 func locateSwiftCorePath() -> String? {
     guard let root = locateSwiftSuiteRoot() else { return nil }
     return root.appendingPathComponent("swiftCORE/swiftCORE").path
+}
+
+// Right-click context menu for terminal views — SwiftTerm's
+// LocalProcessTerminalView is a custom NSView, not an NSTextView, so it
+// doesn't get Terminal.app's built-in contextual menu for free. This
+// reuses the same standard Copy/Paste/Select All selectors already wired
+// up on the Edit menu, routed through the normal first-responder chain
+// (target: nil), so it doesn't need any new plumbing to work correctly.
+func buildTerminalContextMenu() -> NSMenu {
+    let menu = NSMenu()
+    menu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "")
+    menu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "")
+    menu.addItem(NSMenuItem.separator())
+    menu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "")
+    return menu
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -402,6 +415,7 @@ class RemoteSessionController: NSObject, NSWindowDelegate, LocalProcessTerminalV
         terminalView = LocalProcessTerminalView(frame: terminalFrame)
         terminalView.autoresizingMask = [.width, .height]
         terminalView.processDelegate = self
+        terminalView.menu = buildTerminalContextMenu()
         if let font = NSFont(name: fontName, size: fontSize) {
             terminalView.font = font
         }
@@ -530,6 +544,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         terminalView = LocalProcessTerminalView(frame: terminalFrame)
         terminalView.autoresizingMask = [.width, .height]
         terminalView.processDelegate = self
+        terminalView.menu = buildTerminalContextMenu()
 
         if let font = NSFont(name: fontName, size: fontSize) {
             terminalView.font = font
