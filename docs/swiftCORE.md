@@ -37,7 +37,7 @@ login: _          Password: _
 Last login: THU JUL 17 09:21:25 2026
 ```
 
-Type your username, press Tab or Enter, then type your password. The password field does not echo characters.
+Type your username, press Enter, then type your password. The password field does not echo characters.
 
 On successful login, swiftCORE writes a session key to `.core_session` (valid for 30 minutes) and presents the main navigation screen — a centered banner reading **swiftCORE**, with every letter individually colored as a small nod to it being the launcher for the whole suite.
 
