@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-swiftADMIN.py — swiftSUITE Administrative Toolkit v2.5
+swiftADMIN.py — swiftSUITE Administrative Toolkit v3.01
 ─────────────────────────────────────────────────────────
 Handles builds, password management, data export/import,
 and ttyd web terminal server management.
