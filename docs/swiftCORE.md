@@ -2,6 +2,8 @@
 
 swiftCORE is the launcher and authentication hub for the swiftSUITE. It is the first app you interact with on every session and the gateway to all other apps.
 
+You can launch swiftCORE directly from a terminal (`./swiftCORE`), or use `swiftCT` — a native macOS app that opens straight into swiftCORE in an embedded terminal window, no manual `cd`-and-run needed. See [swiftCT's documentation](swiftCT.md) for details.
+
 <img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/45256bcf-fdf4-4ae8-951a-f6376e555ed2" />
 
 ---

@@ -3,8 +3,12 @@
 swiftCT is a native macOS terminal launcher for swiftCORE — the entry point
 into swiftSUITE. It connects you to the core set of swiftSUITE applications
 (swiftCALENDAR, swiftCONTACTS, swiftCORE, swiftMAIL, swiftNOTES, swiftSTOCKS,
-and swiftVAULT) with no browser, no ttyd, and no network connection of any
-kind — everything runs locally.
+and swiftVAULT). Its primary mode is fully local — no browser, no ttyd, no
+network — everything runs as a direct local process. It also includes two
+optional convenience features (launching an external Terminal window, and
+connecting to a remote machine over SSH) for anyone who wants them; neither
+is part of the core swiftSUITE workflow. See [Why no central-machine
+SSH?](#why-no-central-machine-ssh) below for the history.
 
 ## What it does
 
@@ -21,6 +25,9 @@ kind — everything runs locally.
   - **Run `./swiftCT` from a shell** → execs straight into `swiftCORE`
     in-place, no GUI window — behaves exactly like running `swiftCORE`
     directly
+- Optionally connects to a remote machine over SSH, and can launch an
+  external Terminal.app window — see [Menu bar features](#menu-bar-features)
+  below. Both are convenience extras, not required for normal use.
 
 ## Requirements
 
@@ -87,19 +94,43 @@ regenerate from the new artwork.
   without rebuilding
 - **Terminal → Launch External Terminal** — opens Apple's Terminal.app
   pointed at the swiftSUITE root, for anyone who wants direct filesystem
-  access alongside the app
+  access alongside the app. A convenience extra, kept purely for anyone
+  who finds it handy — not needed for normal swiftSUITE use.
+- **Terminal → New Remote Connection...** — opens a small connection
+  panel to SSH into another machine (nickname, user, host — saved for
+  reuse, editable/removable from the same panel). This runs in a
+  completely separate window from swiftCT's own local swiftCORE session
+  and has nothing to do with running swiftSUITE itself — it's a general
+  convenience for anyone who wants quick SSH access to some other machine
+  while they're already in swiftCT, kept from an earlier design (see
+  below) purely because it was useful to have around, not because
+  swiftSUITE itself needs it.
+- **Terminal → Telemetry** — a small panel with live network throughput
+  graphs (sparkline history + current percent bars). Added purely as a
+  fun extra, not tied to swiftSUITE functionality in any way.
 - Standard macOS app menu — About, Hide, Hide Others, Quit — all present
   and working normally, including standard keyboard shortcuts
 
-## Why no SSH?
+## Why no central-machine SSH?
 
-Earlier development explored an SSH-based variant of this launcher, meant
-to connect to a remote Mac acting as the suite's single source of truth
-across multiple machines. That approach was dropped in favor of
-[Syncthing](https://syncthing.net) keeping the whole `swiftSUITE` folder
-in sync across devices directly — simpler, works offline, and avoids SSH
-key management entirely. swiftCT reflects that decision: it's intentionally
-local-only, with no networking code at all.
+swiftCT's first design (under an earlier name, swiftLT — "local terminal")
+worked differently: it SSH'd in the background into a single always-on Mac
+running the whole swiftSUITE, so the same suite could be reached from
+multiple laptops. That central-machine-via-SSH architecture was dropped
+during design discussion, in favor of a much simpler approach: Syncthing
+was already keeping each laptop's Documents folder in sync for unrelated
+reasons, so rather than SSH-ing into one machine's copy of the suite, each
+laptop just runs its own local copy — with Syncthing quietly syncing the
+underlying JSON data files between them in the background. Every machine
+runs swiftSUITE natively and locally; there's no single source-of-truth
+machine to connect to anymore, and no SSH key management needed for normal
+use.
+
+The SSH **connect-to-a-remote-machine** feature and the external-Terminal
+launcher were both kept anyway, as general-purpose convenience tools for
+anyone who wants quick access to some other machine or a real filesystem
+terminal while already in swiftCT — not because swiftSUITE itself needs
+them. Neither is part of the core workflow described above.
 
 ## Permissions note
 

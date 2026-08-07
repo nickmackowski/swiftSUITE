@@ -131,13 +131,15 @@ Each inbox has its own setting for whether captured text-only messages get delet
 Just send an email (or a text, forwarded to your capture address — see below) to your configured inbox. The subject becomes the note's title, and the body becomes the note's content, with two optional lines pulled out automatically:
 
 ```
-Subject: Grocery list
+Subject: n: Grocery list
 
 Pick up milk, eggs, bread.
 
 Tag: errands, personal
 Due: 8/10/26
 ```
+
+Start the subject with **`n:`** — this is the recommended convention, matching swiftCALENDAR's `c:` prefix for calendar entries, so the choice between "note" and "calendar event" is always explicit rather than implied. A subject with no prefix at all is still treated as a note too, kept for backward compatibility, but `n:` is the standard going forward and the one to actually use.
 
 - **`Tag:`** — comma-separated tags, same idea as typing tags in-app. Not `[bracketed]` — that syntax used to be the way to do this, but was dropped because it's painful to reach on an iOS keyboard
 - **`Due:`** — accepts `M/D`, `M/D/YY`, or `M/D/YYYY`. Same as setting a due date in-app, it'll show up on swiftCALENDAR automatically
@@ -150,7 +152,7 @@ If your phone can forward incoming texts to email (iOS Shortcuts' "Personal Auto
 
 ### Calendar Entries, Not Just Notes
 
-The same inbox and same pipeline can also create real calendar events in swiftCALENDAR, using a `c:` subject prefix instead of a plain subject. See swiftCALENDAR's own README for the full `c:` format — it's a different single-line date format from `Due:`, since a calendar event needs a specific time, not just a date.
+The same inbox and same pipeline can also create real calendar events in swiftCALENDAR — swap the `n:` prefix for **`c:`** instead. See swiftCALENDAR's own README for the full `c:` format — it's a different single-line date format from `Due:`, since a calendar event needs a specific time, not just a date.
 
 ---
 

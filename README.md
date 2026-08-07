@@ -1,6 +1,6 @@
 # swiftSUITE
 
-A personal productivity suite built entirely in Swift for macOS terminals. Seven compiled command-line apps sharing a unified login, consistent visual design, and keyboard navigation — accessible locally or from any browser on your network via [ttyd](https://github.com/tsl0922/ttyd) and Tailscale. Beta Notice: This software is currently in development. While it is functional, you may encounter bugs, glitches, unexpected behavior, or incomplete features. If the application becomes unresponsive or behaves unexpectedly, pressing Ctrl+Z and restarting swiftCORE may be enough to zap "the ghost in the machine." Please use this software with caution, report any issues you encounter, and always keep backups of your data.  Thanks and enjoy ;-)
+A personal productivity suite built entirely in Swift for macOS terminals. Seven compiled command-line apps sharing a unified login, consistent visual design, and keyboard navigation — accessible locally or from any browser on your network via [ttyd](https://github.com/tsl0922/ttyd) and Tailscale, or through swiftCT, a native local launcher (see below). Beta Notice: This software is currently in development. While it is functional, you may encounter bugs, glitches, unexpected behavior, or incomplete features. If the application becomes unresponsive or behaves unexpectedly, pressing Ctrl+Z and restarting swiftCORE may be enough to zap "the ghost in the machine." Please use this software with caution, report any issues you encounter, and always keep backups of your data.  Thanks and enjoy ;-)
 
 <img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/8cc305cc-9012-4773-87b9-1a59ca33fe44" />
 
@@ -26,7 +26,7 @@ Fun Fact: Claude AI even helped write this README and most of the supporting doc
 | swiftCALENDAR | `swiftCALENDAR` | Calendar with ICS, METAR, and TAF support, plus live birthday and due-date overlays |
 | swiftMAIL | `swiftMAIL` | IMAP/SMTP email client |
 
-`swiftADMIN` is an eighth companion tool — a Python toolkit (not a compiled Swift binary) for building, ttyd management, and factory reset. `swiftCT` is a ninth companion tool — a native macOS terminal launcher for swiftCORE, no browser required. See their own rows further down.
+`swiftADMIN` is an eighth companion tool — a Python toolkit (not a compiled Swift binary) for building, ttyd management, and factory reset. `swiftCT` is a ninth companion tool — a native macOS terminal launcher for swiftCORE, no browser required. See their own sections further down.
 
 ---
 
@@ -239,7 +239,7 @@ Then open `http://<your-tailscale-ip>:7681` in any browser on your Tailscale net
 
 ## swiftCT
 
-`swiftCT` is a native macOS terminal launcher for swiftCORE — no browser, no ttyd, no network connection at all. Double-click `swiftCT.app` for a native GUI window with an embedded terminal, or run `./swiftCT` directly from a shell for a zero-frills passthrough straight into swiftCORE.
+`swiftCT` is a native macOS terminal launcher for swiftCORE. Its primary mode is fully local — no browser, no ttyd, no network — spawning swiftCORE as a direct local process. Double-click `swiftCT.app` for a native GUI window with an embedded terminal, or run `./swiftCT` directly from a shell for a zero-frills passthrough straight into swiftCORE. It also includes two optional convenience extras — launching an external Terminal.app window, and connecting to a remote machine over SSH — for anyone who wants them; neither is required or used for normal swiftSUITE operation. See [swiftCT's own README](docs/swiftCT.md) for the full story, including why SSH isn't the primary access method here (short version: Syncthing keeping each machine's data in sync directly turned out to be simpler than one central machine reached over SSH).
 
 It's self-locating: swiftCT finds `swiftCORE` relative to its own position on disk, so the whole `swiftSUITE` folder can be moved, renamed, or copied anywhere and swiftCT still finds its neighbor correctly. It's built on [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) (MIT License — see [swiftCT/THIRD-PARTY-LICENSES.md](swiftCT/THIRD-PARTY-LICENSES.md)), and builds automatically as part of `swiftADMIN`'s Build All Apps. See the [swiftCT documentation](docs/swiftCT.md) for full details.
 
