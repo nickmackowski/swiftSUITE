@@ -2,7 +2,8 @@
 
 swiftMAIL is a terminal-based IMAP/SMTP email client that supports multiple accounts, folder navigation, composing and replying to email, and contact lookup from swiftCONTACTS.
 
-<img width="989" height="611" alt="image" src="https://github.com/user-attachments/assets/c5e73542-ba70-43e3-a16e-e1a5a09ce36f" />
+<img width="2314" height="1688" alt="image" src="https://github.com/user-attachments/assets/bea6abad-f6a6-4cab-817d-9363011b030a" />
+
 
 ---
 
