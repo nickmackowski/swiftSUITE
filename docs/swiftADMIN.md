@@ -13,7 +13,7 @@ swiftADMIN is a Python-based administrative toolkit for the swiftSUITE. It handl
 - Manages ttyd — start, check status, and stop the web terminal server
 - Exports suite data for backup purposes
 - Resets the suite to factory defaults for sharing or fresh starts
-- Provides a home for future admin features (password change coming in v3.0)
+- Provides a home for future admin features (password change coming in v4.0)
 
 ---
 
