@@ -190,7 +190,7 @@ swiftSUITE/
 └── .gitignore
 ```
 
-`swiftADMIN` automatically detects whether an app's source lives in `source_code/` or loose at the app root, and builds from whichever it finds — apps don't all need to be migrated to this layout at once.
+`swiftADMIN` automatically detects whether an app's source lives in `source_code/` or loose at the app root, and builds from whichever it finds.
 
 ---
 
