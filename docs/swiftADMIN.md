@@ -94,15 +94,14 @@ Presents a numbered menu of every app. Enter one number for a single app, or mul
 
 ## Change Master Password `[3]`
 
-**Coming in v3.0.**
+**Warning: This feature is currently under development. Data loss is possible/likely. Proceed with caution and ensure you have backups before continuing**
 
-The password change feature is under development. Changing the master password requires re-encrypting all data in swiftNOTES, swiftVAULT, and swiftCONTACTS with a new key. Until full re-encryption is implemented, use the export/import workflow as a workaround:
+The password change feature is under development and while it works you may experience data loss. Changing the master password requires re-encrypting all data in swiftNOTES, swiftVAULT, and swiftCONTACTS with a new key. I have tested it multiple time and while it does work please backup you data prior to changing the password just to be safe.  
 
 1. Export data from each app's Utilities menu
 2. Run change password script
 3. Log in with new password
 4. Re-import data via each app's Utilities menu
-5. Warning: This feature is currently under development. Data loss is possible/likely. Proceed with caution and ensure you have backups before continuing.
 
 ---
 
