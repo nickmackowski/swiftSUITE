@@ -1,3 +1,9 @@
+// ═══════════════════════════════════════════════════════════════
+// APP: swiftCT
+// The main swiftSUITE terminal launcher app
+// File: Sources/swiftCT/main.swift
+// ═══════════════════════════════════════════════════════════════
+
 import AppKit
 import SwiftTerm
 #if canImport(Glibc)
@@ -61,15 +67,6 @@ let colorThemes: [ColorTheme] = [
 // list above doesn't silently break which theme is the factory default.
 let factoryDefaultThemeIndex: Int = colorThemes.firstIndex(where: { $0.name == "Clear Dark" }) ?? 0
 
-// Tracks network byte counters at a point in time — used to compute
-// throughput by diffing two samples a few seconds apart, since macOS
-// has no single "current speed" value to query directly.
-struct NetworkSample {
-    let bytesIn: UInt64
-    let bytesOut: UInt64
-    let timestamp: Date
-}
-
 enum CursorShape: Int, CaseIterable {
     case block = 0
     case underline = 1
@@ -88,7 +85,6 @@ enum CursorShape: Int, CaseIterable {
 // These represent the SAVED default — separate from whatever's being
 // live-previewed in the Settings window at any given moment.
 let themeIndexDefaultsKey = "swiftCT.themeIndex"
-let transparencyDefaultsKey = "swiftCT.transparency"
 let cursorShapeDefaultsKey = "swiftCT.cursorShape"
 let cursorBlinkDefaultsKey = "swiftCT.cursorBlink"
 let savedConnectionsDefaultsKey = "swiftCT.savedConnections"
@@ -115,7 +111,6 @@ func persistSavedConnections(_ connections: [SavedConnection]) {
         UserDefaults.standard.set(data, forKey: savedConnectionsDefaultsKey)
     }
 }
-let minTransparency: Double = 0.4   // slider floor — below this, text gets hard to read
 
 // ─────────────────────────────────────────────────────────────
 // PATH DISCOVERY
@@ -165,6 +160,129 @@ func buildTerminalContextMenu() -> NSMenu {
 }
 
 // ─────────────────────────────────────────────────────────────
+// SHARED CONFIG — a plain JSON file inside swiftSUITE itself, letting
+// this Settings window configure things (Syncthing API key/folder ID,
+// Tailscale binary path) that swiftSYSINFO actually uses. Deliberately
+// NOT UserDefaults: each compiled app has its own separate UserDefaults
+// domain (different bundle IDs), so writing here wouldn't be visible to
+// swiftSYSINFO at all. A shared file sidesteps that with zero extra
+// entitlements needed, since neither app is sandboxed.
+//
+// NOTE: this file can hold a real Syncthing API key. Add its filename to
+// .gitignore in any sterile/public copy of this repo.
+// ─────────────────────────────────────────────────────────────
+
+let sharedConfigFilename = "swiftsuite-config.json"
+
+struct SharedConfig: Codable {
+    var syncthingAPIKey: String?
+    var syncthingFolderIDs: String?   // comma-separated — status reflects the least-caught-up folder
+    var tailscaleBinaryPath: String?
+    var showTailscale: Bool?          // nil defaults to true (shown) — an existing config file without this key shouldn'''t suddenly hide a row nobody asked to hide
+    var showSyncthing: Bool?          // same default-to-true behavior
+    var showVPN: Bool?                // same default-to-true behavior
+}
+
+func sharedConfigURL() -> URL? {
+    guard let root = locateSwiftSuiteRoot() else { return nil }
+    return root.appendingPathComponent("swiftCT").appendingPathComponent(sharedConfigFilename)
+}
+
+func loadSharedConfig() -> SharedConfig {
+    guard let url = sharedConfigURL(), let data = try? Data(contentsOf: url) else {
+        return SharedConfig()
+    }
+    return (try? JSONDecoder().decode(SharedConfig.self, from: data)) ?? SharedConfig()
+}
+
+func saveSharedConfig(_ config: SharedConfig) {
+    guard let url = sharedConfigURL() else { return }
+    if let data = try? JSONEncoder().encode(config) {
+        try? data.write(to: url)
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// LAUNCH SLOTS — up to 6 companion/custom apps, configurable from
+// Settings, launched as fully separate processes (never windows owned
+// by swiftCT — same reasoning as swiftEyes/swiftClock/System Info
+// always being independent processes). Two kinds:
+//
+// - companion: resolved dynamically each launch via locateSwiftSuiteRoot()
+//   + a folder name, so it stays portable if the whole swiftSUITE folder
+//   moves or syncs to a machine with a different username.
+// - custom: an absolute path to any .app, picked via a file browser.
+//   Not portable across machines the same way — but there's no sensible
+//   "relative" convention for something living outside swiftSUITE.
+// ─────────────────────────────────────────────────────────────
+
+let launchSlotsDefaultsKey = "swiftCT.launchSlots"
+let maxLaunchSlots = 6
+
+struct LaunchSlot: Codable {
+    var kind: String   // "companion" or "custom"
+    var folderName: String?
+    var path: String?
+    var displayName: String
+}
+
+func defaultLaunchSlots() -> [LaunchSlot] {
+    guard let root = locateSwiftSuiteRoot() else { return [] }
+    let companions: [(folder: String, display: String)] = [
+        ("swiftEYES", "swiftEyes"),
+        ("swiftCLOCK", "swiftClock"),
+        ("swiftSYSINFO", "System Info")
+    ]
+    var slots: [LaunchSlot] = []
+    for companion in companions {
+        let appPath = root.appendingPathComponent("\(companion.folder)/\(companion.folder).app")
+        if FileManager.default.fileExists(atPath: appPath.path) {
+            slots.append(LaunchSlot(kind: "companion", folderName: companion.folder, path: nil, displayName: companion.display))
+        }
+    }
+    return slots
+}
+
+func loadLaunchSlots() -> [LaunchSlot] {
+    guard let data = UserDefaults.standard.data(forKey: launchSlotsDefaultsKey) else {
+        // Never configured before — seed with whichever companion apps
+        // are actually found, so it works out of the box. Persisted
+        // immediately so a deliberately-emptied list later doesn't get
+        // re-seeded on next launch.
+        let seeded = defaultLaunchSlots()
+        persistLaunchSlots(seeded)
+        return seeded
+    }
+    return (try? JSONDecoder().decode([LaunchSlot].self, from: data)) ?? []
+}
+
+func persistLaunchSlots(_ slots: [LaunchSlot]) {
+    if let data = try? JSONEncoder().encode(slots) {
+        UserDefaults.standard.set(data, forKey: launchSlotsDefaultsKey)
+    }
+}
+
+func launchPath(for slot: LaunchSlot) -> String? {
+    switch slot.kind {
+    case "companion":
+        guard let folderName = slot.folderName, let root = locateSwiftSuiteRoot() else { return nil }
+        return root.appendingPathComponent("\(folderName)/\(folderName).app").path
+    case "custom":
+        return slot.path
+    default:
+        return nil
+    }
+}
+
+func launchSlot(_ slot: LaunchSlot) {
+    guard let path = launchPath(for: slot) else { return }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+    process.arguments = [path]
+    try? process.run()
+}
+
+// ─────────────────────────────────────────────────────────────
 // CLI passthrough — if launched from an interactive terminal (someone
 // typed `./swiftCT` directly rather than double-clicking the app),
 // exec straight into swiftCORE with no GUI window at all. Behaves
@@ -196,166 +314,6 @@ if isatty(STDIN_FILENO) != 0 {
 // generic remote shells, with none of the "never run two swiftCORE
 // processes against the same data at once" concerns that apply locally.
 // ─────────────────────────────────────────────────────────────
-
-// Small colored progress bar used in the System Info window for CPU and
-// Disk usage — a rounded track with a colored fill whose width reflects
-// the current percentage.
-// Small rolling line graph — used for Memory's usage trend, BGInfo-style.
-// Keeps a fixed-size window of recent percentage samples and redraws
-// itself as a filled sparkline each time a new value comes in.
-// Bidirectional network activity bar — grows blue to the right for
-// upload, red to the left for download, from a centered zero point.
-class NetworkBarView: NSView {
-    private let track = NSView()
-    private let downFill = NSView()   // red, grows left
-    private let upFill = NSView()     // blue, grows right
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-
-        track.wantsLayer = true
-        track.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.15).cgColor
-        track.layer?.cornerRadius = frame.height / 2
-        track.frame = bounds
-        track.autoresizingMask = [.width, .height]
-        addSubview(track)
-
-        downFill.wantsLayer = true
-        downFill.layer?.backgroundColor = NSColor.systemRed.cgColor
-        addSubview(downFill)
-
-        upFill.wantsLayer = true
-        upFill.layer?.backgroundColor = NSColor.systemBlue.cgColor
-        addSubview(upFill)
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) not used") }
-
-    // maxBytesPerSecond sets full-scale bar length for each side —
-    // defaults to roughly 10 Mbps, a reasonable everyday ceiling.
-    // Logarithmic scale, not linear — network traffic swings across many
-    // orders of magnitude (a few Kbps idle vs. 50+ Mbps active), and any
-    // single linear ceiling makes either light or heavy traffic
-    // effectively invisible. Log scale keeps both meaningfully visible
-    // on the same bar.
-    func setRates(downBytesPerSecond: Double, upBytesPerSecond: Double, maxBytesPerSecond: Double = 1_250_000) {
-        let half = bounds.width / 2
-        let floorBytesPerSecond: Double = 500   // ~4 Kbps — below this, treat as effectively idle
-
-        func scaledWidth(_ bytesPerSecond: Double) -> CGFloat {
-            guard bytesPerSecond > floorBytesPerSecond else {
-                // Still show a faint sliver for any nonzero activity,
-                // rather than a dead-flat bar during light traffic.
-                return bytesPerSecond > 0 ? half * 0.04 : 0
-            }
-            let logValue = log10(bytesPerSecond)
-            let logMin = log10(floorBytesPerSecond)
-            let logMax = log10(maxBytesPerSecond)
-            let fraction = (logValue - logMin) / (logMax - logMin)
-            return half * CGFloat(max(0, min(1, fraction)))
-        }
-
-        let downWidth = scaledWidth(downBytesPerSecond)
-        let upWidth = scaledWidth(upBytesPerSecond)
-        downFill.frame = NSRect(x: half - downWidth, y: 0, width: downWidth, height: bounds.height)
-        upFill.frame = NSRect(x: half, y: 0, width: upWidth, height: bounds.height)
-    }
-}
-
-class SparklineView: NSView {
-    var values: [Double] = []
-    let maxPoints = 30
-    var lineColor: NSColor = .systemBlue
-    var fixedMax: CGFloat = 100   // memory is a 0–100% metric, so scale is fixed rather than dynamic
-
-    func addValue(_ value: Double) {
-        values.append(value)
-        if values.count > maxPoints { values.removeFirst() }
-        needsDisplay = true
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-        guard values.count > 1 else { return }
-
-        let stepX = bounds.width / CGFloat(maxPoints - 1)
-        let linePath = NSBezierPath()
-        let fillPath = NSBezierPath()
-
-        for (index, value) in values.enumerated() {
-            let x = CGFloat(index) * stepX
-            let y = bounds.height * CGFloat(min(value, Double(fixedMax)) / Double(fixedMax))
-            let point = NSPoint(x: x, y: y)
-            if index == 0 {
-                linePath.move(to: point)
-                fillPath.move(to: NSPoint(x: x, y: 0))
-                fillPath.line(to: point)
-            } else {
-                linePath.line(to: point)
-                fillPath.line(to: point)
-            }
-        }
-        let lastX = CGFloat(values.count - 1) * stepX
-        fillPath.line(to: NSPoint(x: lastX, y: 0))
-        fillPath.close()
-
-        lineColor.withAlphaComponent(0.2).setFill()
-        fillPath.fill()
-        lineColor.setStroke()
-        linePath.lineWidth = 1.5
-        linePath.stroke()
-    }
-}
-
-// Which visual indicator (if any) a telemetry row gets, beyond its text value.
-enum RowVisual: Equatable {
-    case none
-    case percentBar
-    case sparkline
-    case networkBar
-}
-
-class PercentBar: NSView {
-    private let track = NSView()
-    private let fill = NSView()
-    var barColor: NSColor = .systemBlue {
-        didSet { fill.layer?.backgroundColor = barColor.cgColor }
-    }
-
-    override init(frame: NSRect) {
-        super.init(frame: frame)
-        wantsLayer = true
-
-        track.wantsLayer = true
-        track.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.15).cgColor
-        track.layer?.cornerRadius = frame.height / 2
-        track.frame = bounds
-        track.autoresizingMask = [.width, .height]
-        addSubview(track)
-
-        fill.wantsLayer = true
-        fill.layer?.backgroundColor = barColor.cgColor
-        fill.layer?.cornerRadius = frame.height / 2
-        fill.frame = NSRect(x: 0, y: 0, width: 0, height: frame.height)
-        addSubview(fill)
-    }
-
-    required init?(coder: NSCoder) { fatalError("init(coder:) not used") }
-
-    func setPercent(_ percent: Double) {
-        let clamped = max(0, min(100, percent))
-        let width = bounds.width * CGFloat(clamped / 100)
-        fill.frame = NSRect(x: 0, y: 0, width: width, height: bounds.height)
-    }
-}
-
-// Picks a bar color by severity, BGInfo-style — green/orange/red.
-func severityColor(for percent: Double) -> NSColor {
-    if percent < 60 { return .systemGreen }
-    if percent < 85 { return .systemOrange }
-    return .systemRed
-}
 
 class RemoteSessionController: NSObject, NSWindowDelegate, LocalProcessTerminalViewDelegate {
     var window: NSWindow!
@@ -398,9 +356,8 @@ class RemoteSessionController: NSObject, NSWindowDelegate, LocalProcessTerminalV
         // theme changes later while this window stays open.
         let themeIndex = owner?.currentThemeIndex ?? factoryDefaultThemeIndex
         let theme = colorThemes[themeIndex]
-        let transparency = owner?.currentTransparency ?? 1.0
-        let bg = theme.background.withAlphaComponent(transparency)
-        window.isOpaque = transparency >= 0.999
+        let bg = theme.background
+        window.isOpaque = true
         window.backgroundColor = bg
         window.center()
 
@@ -458,15 +415,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
     var container: NSView!
     var aboutWindow: NSWindow?
 
-    // MARK: - Telemetry window state
-    var telemetryWindow: NSWindow?
-    var telemetryTimer: Timer?
-    var telemetryLabels: [String: NSTextField] = [:]
-    var telemetryBars: [String: PercentBar] = [:]
-    var telemetryGraphs: [String: SparklineView] = [:]
-    var telemetryNetworkBars: [String: NetworkBarView] = [:]
-    var lastNetworkSample: NetworkSample?
-
     // MARK: - Remote SSH session state
     var remoteSessions: [RemoteSessionController] = []
     var remoteConnectionWindow: NSWindow?
@@ -477,18 +425,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
     var userField: NSTextField?
     var hostField: NSTextField?
 
+    // MARK: - Utilities & Integrations (Settings additions)
+    var utilitySlotRows: [(container: NSView, label: NSTextField, removeButton: NSButton)] = []
+    var utilitiesListContainer: NSView?
+    var addUtilityButton: NSButton?
+    var syncthingKeyField: NSTextField?
+    var syncthingFolderField: NSTextField?
+    var tailscalePathField: NSTextField?
+    var showTailscaleCheckbox: NSButton?
+    var showSyncthingCheckbox: NSButton?
+    var showVPNCheckbox: NSButton?
+    var integrationsStatusLabel: NSTextField?
+
     // "Live" state — what's actually showing right now, including
     // temporary previews from the Settings window that haven't been
     // committed via the Default button yet.
     var currentThemeIndex = factoryDefaultThemeIndex
-    var currentTransparency: CGFloat = 1.0
     var currentCursorShape: CursorShape = .block
     var currentCursorBlink: Bool = true
 
     // "Saved" state — what's actually persisted, i.e. what will load
     // next launch. Only changes when the Default button is pressed.
     var savedThemeIndex = factoryDefaultThemeIndex
-    var savedTransparency: CGFloat = 1.0
     var savedCursorShape: CursorShape = .block
     var savedCursorBlink: Bool = true
 
@@ -498,8 +456,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
     var defaultLabel: NSTextField?
     var previewBox: NSView?
     var previewLines: [NSTextField] = []
-    var settingsTransparencySlider: NSSlider?
-    var transparencyValueLabel: NSTextField?
     var cursorRadioButtons: [NSButton] = []
     var blinkCheckbox: NSButton?
     var defaultButton: NSButton?
@@ -517,7 +473,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
         loadSavedDefaults()
         currentThemeIndex = savedThemeIndex
-        currentTransparency = savedTransparency
         currentCursorShape = savedCursorShape
         currentCursorBlink = savedCursorBlink
 
@@ -574,9 +529,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
             savedThemeIndex = idx
         } else {
             savedThemeIndex = factoryDefaultThemeIndex
-        }
-        if let t = defaults.object(forKey: transparencyDefaultsKey) as? Double {
-            savedTransparency = CGFloat(t)
         }
         if let shapeRaw = defaults.object(forKey: cursorShapeDefaultsKey) as? Int, let shape = CursorShape(rawValue: shapeRaw) {
             savedCursorShape = shape
@@ -651,9 +603,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         terminalMenu.addItem(withTitle: "New Remote Connection…",
                               action: #selector(showNewRemoteConnection),
                               keyEquivalent: "")
-        terminalMenu.addItem(withTitle: "System Info…",
-                              action: #selector(showTelemetryPanel),
-                              keyEquivalent: "")
+
+        // Utilities menu — up to 6 configurable apps (companion or
+        // custom), each launched as a fully separate process, not a
+        // window owned by swiftCT. This is deliberate: these are meant
+        // to keep running as independent desktop companions even if
+        // swiftCT itself quits. Same pattern already used for "Launch
+        // External Terminal" above. Rebuilt dynamically from whatever's
+        // configured in Settings, rather than a fixed hardcoded list.
+        let utilitiesMenuItem = NSMenuItem()
+        mainMenu.addItem(utilitiesMenuItem)
+        let utilitiesMenu = NSMenu(title: "Utilities")
+        utilitiesMenuItem.submenu = utilitiesMenu
+        rebuildUtilitiesMenu(utilitiesMenu)
 
         // Standard Edit menu — gives you working Cmd+C / Cmd+V in the terminal
         let editMenuItem = NSMenuItem()
@@ -667,501 +629,46 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         NSApp.mainMenu = mainMenu
     }
 
+    // Rebuilds the Utilities menu's contents from the current launch
+    // slots list. Called at startup, and again any time Settings adds
+    // or removes a slot, so the menu bar stays in sync without needing
+    // a relaunch.
+    func rebuildUtilitiesMenu(_ menu: NSMenu? = nil) {
+        let targetMenu: NSMenu
+        if let menu = menu {
+            targetMenu = menu
+        } else if let existing = NSApp.mainMenu?.items.first(where: { $0.submenu?.title == "Utilities" })?.submenu {
+            targetMenu = existing
+        } else {
+            return
+        }
+
+        targetMenu.removeAllItems()
+        let slots = loadLaunchSlots()
+        for (index, slot) in slots.enumerated() {
+            let item = NSMenuItem(title: slot.displayName, action: #selector(launchUtilitySlot(_:)), keyEquivalent: "")
+            item.tag = index
+            item.target = self
+            targetMenu.addItem(item)
+        }
+        if !slots.isEmpty {
+            targetMenu.addItem(NSMenuItem.separator())
+        }
+        targetMenu.addItem(withTitle: "Manage Utilities…", action: #selector(showSettingsPanel), keyEquivalent: "")
+    }
+
+    @objc func launchUtilitySlot(_ sender: NSMenuItem) {
+        let slots = loadLaunchSlots()
+        guard slots.indices.contains(sender.tag) else { return }
+        launchSlot(slots[sender.tag])
+    }
+
     @objc func launchExternalTerminal() {
         guard let root = locateSwiftSuiteRoot() else { return }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
         process.arguments = ["-a", "Terminal", root.path]
         try? process.run()
-    }
-
-    // MARK: - Telemetry (System Info) window
-
-    @objc func showTelemetryPanel() {
-        if telemetryWindow == nil {
-            buildTelemetryWindow()
-        }
-        telemetryWindow?.center()
-        telemetryWindow?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-        startTelemetryRefresh()
-    }
-
-    func buildTelemetryWindow() {
-        let winWidth: CGFloat = 300
-        let plainRowHeight: CGFloat = 30      // single-line rows: icon, label, value all together
-        let visualRowHeight: CGFloat = 50     // rows with a bar/graph: icon+label on top, bar/graph below, value under that
-
-        let (systemName, osVersion) = systemNameAndOS()
-        let extraLocalVolumes = mountedExtraLocalVolumes()
-        let networkVolumes = mountedNetworkVolumes()
-
-        let magentaColor = NSColor(calibratedRed: 0.93, green: 0.25, blue: 0.60, alpha: 1.0)
-
-        // NOTE: SF Symbol names below are my best recollection, not
-        // verified against Apple's actual catalog from this sandbox — if
-        // an icon shows up blank, that's the first thing to check/swap
-        // (search for alternatives in the Xcode SF Symbols app).
-        var rows: [(title: String, key: String, symbol: String, visual: RowVisual, barColor: NSColor)] = [
-            ("System", "system", "desktopcomputer", .none, .clear),
-            ("OS Version", "os", "gearshape", .none, .clear),
-            ("Uptime", "uptime", "clock", .none, .clear),
-            ("CPU", "cpu", "cpu", .percentBar, letterColor_f),
-            ("Memory", "memory", "memorychip", .percentBar, .systemGreen),
-            ("Disk", "disk", "internaldrive", .percentBar, letterColor_s)
-        ]
-        // USB drives (purple) and iSCSI/other non-removable local volumes
-        // (gold, matching the boot disk) — right after Disk.
-        for (index, volume) in extraLocalVolumes.enumerated() {
-            let color = volume.isRemovable ? letterColor_i : letterColor_s
-            let symbol = volume.isRemovable ? "externaldrive" : "internaldrive"
-            rows.append((volume.name, "localvol\(index)", symbol, .percentBar, color))
-        }
-        // Network shares (magenta), one per mounted share, computed once
-        // at window-build time (see mountedNetworkVolumes() comment).
-        for (index, volume) in networkVolumes.enumerated() {
-            rows.append((volume.name, "netvol\(index)", "externaldrive.connected.to.line.below", .percentBar, magentaColor))
-        }
-        rows.append(("Network", "network", "network", .networkBar, .clear))
-
-        let totalRowsHeight = rows.reduce(CGFloat(0)) { sum, row in
-            sum + (row.visual == .none ? plainRowHeight : visualRowHeight)
-        }
-        let winHeight: CGFloat = 30 + totalRowsHeight
-
-        let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: winWidth, height: winHeight),
-            styleMask: [.titled, .closable],
-            backing: .buffered,
-            defer: false
-        )
-        win.title = "System Info"
-        win.isReleasedWhenClosed = false
-        win.delegate = self
-
-        let theme = colorThemes[currentThemeIndex]
-        let bg = theme.background.withAlphaComponent(currentTransparency)
-        win.isOpaque = currentTransparency >= 0.999
-        win.backgroundColor = bg
-
-        let content = NSView(frame: NSRect(x: 0, y: 0, width: winWidth, height: winHeight))
-        content.wantsLayer = true
-        content.layer?.backgroundColor = bg.cgColor
-
-        var y = winHeight - 20
-        for row in rows {
-            let rowHeight = (row.visual == .none) ? plainRowHeight : visualRowHeight
-
-            if row.visual == .none {
-                // Single line: icon, label, value all together.
-                let icon = NSImageView(frame: NSRect(x: 16, y: y - 14, width: 16, height: 16))
-                icon.image = NSImage(systemSymbolName: row.symbol, accessibilityDescription: row.title)
-                icon.contentTintColor = theme.foreground
-                content.addSubview(icon)
-
-                let label = NSTextField(labelWithString: row.title)
-                label.font = NSFont.boldSystemFont(ofSize: 11)
-                label.textColor = theme.foreground
-                label.frame = NSRect(x: 38, y: y - 12, width: 110, height: 14)
-                content.addSubview(label)
-
-                let value = NSTextField(labelWithString: "—")
-                value.font = NSFont.systemFont(ofSize: 11)
-                value.textColor = theme.foreground
-                value.lineBreakMode = .byTruncatingTail
-                value.alignment = .right
-                value.frame = NSRect(x: winWidth - 148, y: y - 12, width: 132, height: 14)
-                content.addSubview(value)
-                telemetryLabels[row.key] = value
-            } else {
-                // Icon + label on top, bar/graph below, value text under that.
-                let icon = NSImageView(frame: NSRect(x: 16, y: y - 14, width: 16, height: 16))
-                icon.image = NSImage(systemSymbolName: row.symbol, accessibilityDescription: row.title)
-                icon.contentTintColor = theme.foreground
-                content.addSubview(icon)
-
-                let label = NSTextField(labelWithString: row.title)
-                label.font = NSFont.boldSystemFont(ofSize: 11)
-                label.textColor = theme.foreground
-                label.frame = NSRect(x: 38, y: y - 12, width: 150, height: 14)
-                content.addSubview(label)
-
-                switch row.visual {
-                case .percentBar:
-                    let bar = PercentBar(frame: NSRect(x: 16, y: y - 28, width: winWidth - 32, height: 6))
-                    bar.barColor = row.barColor
-                    content.addSubview(bar)
-                    telemetryBars[row.key] = bar
-                case .sparkline:
-                    let graph = SparklineView(frame: NSRect(x: 16, y: y - 32, width: winWidth - 32, height: 14))
-                    graph.lineColor = row.barColor
-                    content.addSubview(graph)
-                    telemetryGraphs[row.key] = graph
-                case .networkBar:
-                    let bar = NetworkBarView(frame: NSRect(x: 16, y: y - 28, width: winWidth - 32, height: 6))
-                    content.addSubview(bar)
-                    telemetryNetworkBars[row.key] = bar
-                case .none:
-                    break
-                }
-
-                let value = NSTextField(labelWithString: "—")
-                value.font = NSFont.systemFont(ofSize: 10)
-                value.textColor = theme.foreground.withAlphaComponent(0.75)
-                value.alignment = .center
-                value.frame = NSRect(x: 16, y: y - 46, width: winWidth - 32, height: 12)
-                content.addSubview(value)
-                telemetryLabels[row.key] = value
-            }
-
-            y -= rowHeight
-        }
-
-        // System, OS, and volume info don't change during a session, so
-        // populate them once here rather than re-fetching every refresh tick.
-        telemetryLabels["system"]?.stringValue = systemName
-        telemetryLabels["os"]?.stringValue = osVersion
-        for (index, volume) in extraLocalVolumes.enumerated() {
-            telemetryLabels["localvol\(index)"]?.stringValue = volume.valueText
-            if let percent = volume.usedPercent {
-                telemetryBars["localvol\(index)"]?.setPercent(percent)
-            }
-        }
-        for (index, volume) in networkVolumes.enumerated() {
-            telemetryLabels["netvol\(index)"]?.stringValue = volume.valueText
-            if let percent = volume.usedPercent {
-                telemetryBars["netvol\(index)"]?.setPercent(percent)
-            }
-        }
-
-        win.contentView = content
-        telemetryWindow = win
-    }
-
-    func startTelemetryRefresh() {
-        refreshTelemetry()   // immediate first update, don't wait for the first tick
-        telemetryTimer?.invalidate()
-        telemetryTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.refreshTelemetry()
-        }
-    }
-
-    func stopTelemetryRefresh() {
-        telemetryTimer?.invalidate()
-        telemetryTimer = nil
-    }
-
-    func refreshTelemetry() {
-        // Fetching CPU/memory/network involves spawning processes and
-        // waiting on them — doing that on a background queue keeps the
-        // UI from hitching on every refresh tick.
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard let self = self else { return }
-
-            let (cpuRawText, cpuPercent) = self.fetchTopSummary()
-            let cpuText = cpuPercent.map { "\(Int($0))% used" } ?? cpuRawText
-            let (memoryPercent, memoryText) = self.fetchMemoryInfo()
-            let uptime = self.formattedUptime()
-            let (diskText, diskPercent) = self.diskSpaceInfo()
-
-            var networkText = "Calculating…"
-            var downRate: Double = 0
-            var upRate: Double = 0
-            if let sample = self.fetchNetworkCounters() {
-                if let rates = self.networkRates(previous: self.lastNetworkSample, current: sample) {
-                    networkText = rates.text
-                    downRate = rates.downBytesPerSecond
-                    upRate = rates.upBytesPerSecond
-                }
-                self.lastNetworkSample = sample
-            } else {
-                networkText = "Unavailable"
-            }
-
-            DispatchQueue.main.async {
-                self.telemetryLabels["cpu"]?.stringValue = cpuText
-                self.telemetryLabels["memory"]?.stringValue = memoryText
-                self.telemetryLabels["uptime"]?.stringValue = uptime
-                self.telemetryLabels["disk"]?.stringValue = diskText
-                self.telemetryLabels["network"]?.stringValue = networkText
-
-                if let cpuPercent = cpuPercent {
-                    self.telemetryBars["cpu"]?.setPercent(cpuPercent)
-                }
-                if let diskPercent = diskPercent {
-                    self.telemetryBars["disk"]?.setPercent(diskPercent)
-                }
-                if let memoryPercent = memoryPercent {
-                    self.telemetryBars["memory"]?.setPercent(memoryPercent)
-                }
-                self.telemetryNetworkBars["network"]?.setRates(downBytesPerSecond: downRate, upBytesPerSecond: upRate)
-            }
-        }
-    }
-
-    // MARK: - Individual stat fetchers
-
-    func formattedUptime() -> String {
-        let seconds = Int(ProcessInfo.processInfo.systemUptime)
-        let days = seconds / 86400
-        let hours = (seconds % 86400) / 3600
-        let minutes = (seconds % 3600) / 60
-        if days > 0 { return "\(days)d \(hours)h \(minutes)m" }
-        if hours > 0 { return "\(hours)h \(minutes)m" }
-        return "\(minutes)m"
-    }
-
-    func diskSpaceInfo() -> (text: String, usedPercent: Double?) {
-        let url = URL(fileURLWithPath: NSHomeDirectory())
-        do {
-            let values = try url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeTotalCapacityKey])
-            let availableBytes = values.volumeAvailableCapacityForImportantUsage ?? 0
-            let totalBytes = Int64(values.volumeTotalCapacity ?? 0)
-            let availableGB = Double(availableBytes) / 1_000_000_000
-            let totalGB = Double(totalBytes) / 1_000_000_000
-            let usedGB = totalGB - availableGB
-            let text = String(format: "%.0f / %.0f GB used", usedGB, totalGB)
-            var usedPercent: Double? = nil
-            if totalGB > 0 {
-                usedPercent = (usedGB / totalGB) * 100
-            }
-            return (text, usedPercent)
-        } catch {
-            return ("Unavailable", nil)
-        }
-    }
-
-    // vm_stat gives clean page counts rather than top's summary text,
-    // making it a more reliable source for an actual numeric percentage
-    // (needed to drive the memory graph). This approximates what
-    // Activity Monitor shows (active + wired + compressed pages / total
-    // physical memory) — a reasonable estimate, not guaranteed to match
-    // Activity Monitor's own number to the decimal, since macOS memory
-    // accounting has genuine nuance around what counts as "used."
-    func fetchMemoryInfo() -> (percent: Double?, text: String) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/vm_stat")
-        let outPipe = Pipe()
-        process.standardOutput = outPipe
-        process.standardError = Pipe()
-
-        func extractNumber(from line: Substring) -> Double {
-            guard let colonIndex = line.firstIndex(of: ":") else { return 0 }
-            let after = line[line.index(after: colonIndex)...]
-            let trimmed = after.trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "."))
-            return Double(trimmed) ?? 0
-        }
-
-        do {
-            try process.run()
-            let data = outPipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            guard let output = String(data: data, encoding: .utf8) else { return (nil, "Unavailable") }
-
-            var pageSize: Double = 16384   // Apple Silicon default; overwritten below if the header specifies otherwise
-            var pagesActive: Double = 0
-            var pagesWired: Double = 0
-            var pagesCompressed: Double = 0
-
-            for line in output.split(separator: "\n") {
-                if line.contains("page size of"), let range = line.range(of: "page size of "), let endRange = line.range(of: " bytes") {
-                    pageSize = Double(line[range.upperBound..<endRange.lowerBound]) ?? pageSize
-                } else if line.hasPrefix("Pages active:") {
-                    pagesActive = extractNumber(from: line)
-                } else if line.hasPrefix("Pages wired down:") {
-                    pagesWired = extractNumber(from: line)
-                } else if line.hasPrefix("Pages occupied by compressor:") {
-                    pagesCompressed = extractNumber(from: line)
-                }
-            }
-
-            let usedBytes = (pagesActive + pagesWired + pagesCompressed) * pageSize
-            let totalBytes = Double(ProcessInfo.processInfo.physicalMemory)
-            guard totalBytes > 0 else { return (nil, "Unavailable") }
-
-            let usedGB = usedBytes / 1_000_000_000
-            let totalGB = totalBytes / 1_000_000_000
-            let text = String(format: "%.0f / %.0f GB used", usedGB, totalGB)
-            return ((usedBytes / totalBytes) * 100, text)
-        } catch {
-            return (nil, "Unavailable")
-        }
-    }
-
-    // Network-mounted volumes (SMB/AFP/NFS shares) — computed once when
-    // the System Info window opens, not re-checked on every refresh
-    // tick. A drive mounted/unmounted after opening won't add or remove
-    // a row until the window's reopened — full live row insertion is a
-    // bigger UI change than seemed worth it for this pass.
-    // Additional LOCAL volumes beyond the boot disk — USB drives (shown
-    // purple) and iSCSI or other non-removable local block storage
-    // (shown the same gold as the main boot disk, since iSCSI presents
-    // to macOS as ordinary local storage despite being network-attached
-    // at the protocol level).
-    func mountedExtraLocalVolumes() -> [(name: String, valueText: String, usedPercent: Double?, isRemovable: Bool)] {
-        let keys: [URLResourceKey] = [.volumeNameKey, .volumeIsLocalKey, .volumeIsRemovableKey, .volumeTotalCapacityKey, .volumeAvailableCapacityKey]
-        guard let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) else {
-            return []
-        }
-
-        var results: [(name: String, valueText: String, usedPercent: Double?, isRemovable: Bool)] = []
-        for url in urls {
-            guard url.path != "/" else { continue }   // boot volume already shown as "Disk"
-            guard let values = try? url.resourceValues(forKeys: Set(keys)) else { continue }
-            guard values.volumeIsLocal == true else { continue }   // network volumes handled separately
-
-            let name = values.volumeName ?? url.lastPathComponent
-            let isRemovable = values.volumeIsRemovable ?? false
-
-            if let available = values.volumeAvailableCapacity, let total = values.volumeTotalCapacity, total > 0 {
-                let availableGB = Double(available) / 1_000_000_000
-                let totalGB = Double(total) / 1_000_000_000
-                let usedGB = totalGB - availableGB
-                let text = "\(String(format: "%.0f", usedGB)) / \(String(format: "%.0f", totalGB)) GB used"
-                let percent = (usedGB / totalGB) * 100
-                results.append((name, text, percent, isRemovable))
-            } else {
-                results.append((name, "—", nil, isRemovable))
-            }
-        }
-        return results
-    }
-
-    func mountedNetworkVolumes() -> [(name: String, valueText: String, usedPercent: Double?)] {
-        // .volumeAvailableCapacityForImportantUsageKey is a heuristic
-        // tuned for local/internal storage decisions (Time Machine,
-        // purgeable space) and doesn't reliably report anything
-        // meaningful for network shares — it was coming back essentially
-        // empty, making every share look 100% full. The plain
-        // .volumeAvailableCapacityKey is the older, more broadly
-        // supported key and reports real numbers across network
-        // filesystems too.
-        let keys: [URLResourceKey] = [.volumeNameKey, .volumeIsLocalKey, .volumeTotalCapacityKey, .volumeAvailableCapacityKey]
-        guard let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys, options: [.skipHiddenVolumes]) else {
-            return []
-        }
-
-        var results: [(name: String, valueText: String, usedPercent: Double?)] = []
-        for url in urls {
-            guard let values = try? url.resourceValues(forKeys: Set(keys)) else { continue }
-            guard values.volumeIsLocal == false else { continue }   // only network volumes
-
-            let name = values.volumeName ?? url.lastPathComponent
-            if let available = values.volumeAvailableCapacity, let total = values.volumeTotalCapacity, total > 0 {
-                let availableGB = Double(available) / 1_000_000_000
-                let totalGB = Double(total) / 1_000_000_000
-                let usedGB = totalGB - availableGB
-                let text = "\(String(format: "%.0f", usedGB)) / \(String(format: "%.0f", totalGB)) GB used"
-                let percent = (usedGB / totalGB) * 100
-                results.append((name, text, percent))
-            } else {
-                results.append((name, "—", nil))
-            }
-        }
-        return results
-    }
-
-    func systemNameAndOS() -> (name: String, os: String) {
-        let name = Host.current().localizedName ?? ProcessInfo.processInfo.hostName
-        let version = ProcessInfo.processInfo.operatingSystemVersion
-        let osString = "macOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)"
-        return (name, osString)
-    }
-
-    func fetchTopSummary() -> (cpu: String, cpuPercent: Double?) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/top")
-        process.arguments = ["-l", "1", "-n", "0"]
-        let outPipe = Pipe()
-        process.standardOutput = outPipe
-        process.standardError = Pipe()   // discard stderr noise
-
-        var cpuResult = "Unavailable"
-
-        do {
-            try process.run()
-            let data = outPipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            if let output = String(data: data, encoding: .utf8) {
-                for line in output.split(separator: "\n", omittingEmptySubsequences: true) {
-                    if line.hasPrefix("CPU usage:") {
-                        cpuResult = line.replacingOccurrences(of: "CPU usage: ", with: "")
-                    }
-                }
-            }
-        } catch {
-            // leave defaults
-        }
-
-        // Parse "X% idle" out of the CPU line to compute used% (100 - idle).
-        var cpuPercent: Double? = nil
-        if let idleRange = cpuResult.range(of: "% idle") {
-            let before = cpuResult[..<idleRange.lowerBound]
-            let numberText = before.split(separator: " ").last ?? ""
-            if let idleValue = Double(numberText) {
-                cpuPercent = 100 - idleValue
-            }
-        }
-
-        return (cpuResult, cpuPercent)
-    }
-
-    // NOTE: parses `netstat -ib`'s column output, targeting the "en0"
-    // interface specifically (the common primary interface on both
-    // WiFi-based laptops and wired Mac Pros). If network stats never
-    // populate on a given machine, run `netstat -ib` directly and check
-    // whether the active interface is actually named something else —
-    // that name is the one thing to change below.
-    let networkInterfaceName = "en0"
-
-    func fetchNetworkCounters() -> NetworkSample? {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/netstat")
-        process.arguments = ["-ib"]
-        let outPipe = Pipe()
-        process.standardOutput = outPipe
-        process.standardError = Pipe()
-
-        do {
-            try process.run()
-            let data = outPipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            guard let output = String(data: data, encoding: .utf8) else { return nil }
-
-            for line in output.split(separator: "\n", omittingEmptySubsequences: true) {
-                let columns = line.split(separator: " ", omittingEmptySubsequences: true)
-                guard columns.count >= 10, columns[0] == Substring(networkInterfaceName) else { continue }
-                if let ibytes = UInt64(columns[6]), let obytes = UInt64(columns[9]) {
-                    return NetworkSample(bytesIn: ibytes, bytesOut: obytes, timestamp: Date())
-                }
-            }
-        } catch {
-            return nil
-        }
-        return nil
-    }
-
-    func networkRates(previous: NetworkSample?, current: NetworkSample) -> (text: String, downBytesPerSecond: Double, upBytesPerSecond: Double)? {
-        guard let previous = previous else { return nil }
-        let elapsed = current.timestamp.timeIntervalSince(previous.timestamp)
-        guard elapsed > 0 else { return nil }
-
-        // Wrapping subtraction as a defensive measure in case a counter
-        // resets between samples (shouldn't happen in a normal short
-        // interval, but costs nothing to guard against).
-        let inRate = Double(current.bytesIn &- previous.bytesIn) / elapsed
-        let outRate = Double(current.bytesOut &- previous.bytesOut) / elapsed
-
-        func formatRate(_ bytesPerSecond: Double) -> String {
-            let kbps = bytesPerSecond * 8 / 1000
-            if kbps > 1000 {
-                return String(format: "%.1f Mbps", kbps / 1000)
-            }
-            return String(format: "%.0f Kbps", kbps)
-        }
-
-        let text = "↓ \(formatRate(inRate))  ↑ \(formatRate(outRate))"
-        return (text, inRate, outRate)
     }
 
     // MARK: - New Remote Connection
@@ -1328,9 +835,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
     // "preview only" mockup, the real terminal updates as you click).
     func applyLiveState() {
         let theme = colorThemes[currentThemeIndex]
-        let bg = theme.background.withAlphaComponent(currentTransparency)
+        let bg = theme.background
 
-        window.isOpaque = currentTransparency >= 0.999
+        window.isOpaque = true
         window.backgroundColor = bg
         container.layer?.backgroundColor = bg.cgColor
         terminalView.nativeBackgroundColor = bg
@@ -1447,9 +954,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         refreshSidebarSelection()
         refreshPreview()
         refreshCursorControls()
-        settingsTransparencySlider?.doubleValue = Double(currentTransparency)
-        transparencyValueLabel?.stringValue = "\(Int(currentTransparency * 100))%"
         updateDefaultButtonState()
+        refreshUtilitySlotRows()
+        let currentConfig = loadSharedConfig()
+        syncthingKeyField?.stringValue = currentConfig.syncthingAPIKey ?? ""
+        syncthingFolderField?.stringValue = currentConfig.syncthingFolderIDs ?? ""
+        tailscalePathField?.stringValue = currentConfig.tailscaleBinaryPath ?? ""
+        showTailscaleCheckbox?.state = (currentConfig.showTailscale ?? true) ? .on : .off
+        showSyncthingCheckbox?.state = (currentConfig.showSyncthing ?? true) ? .on : .off
+        showVPNCheckbox?.state = (currentConfig.showVPN ?? true) ? .on : .off
 
         settingsWindow?.center()
         settingsWindow?.makeKeyAndOrderFront(nil)
@@ -1458,7 +971,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
     func buildSettingsWindow() {
         let winWidth: CGFloat = 640
-        let winHeight: CGFloat = 560
+        let winHeight: CGFloat = 952
 
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: winWidth, height: winHeight),
@@ -1548,32 +1061,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
             previewLines.append(line)
         }
 
-        // Transparency slider
-        let transLabel = NSTextField(labelWithString: "Transparency")
-        transLabel.font = NSFont.systemFont(ofSize: 12)
-        transLabel.frame = NSRect(x: rightX, y: previewY - 30, width: 100, height: 18)
-        content.addSubview(transLabel)
-
-        let sliderWidth = rightWidth - 105 - 55   // leave room for the percentage box
-        let slider = NSSlider(value: Double(currentTransparency),
-                               minValue: minTransparency,
-                               maxValue: 1.0,
-                               target: self,
-                               action: #selector(settingsTransparencyChanged(_:)))
-        slider.isContinuous = true
-        slider.frame = NSRect(x: rightX + 105, y: previewY - 32, width: sliderWidth, height: 20)
-        content.addSubview(slider)
-        settingsTransparencySlider = slider
-
-        let percentLabel = NSTextField(labelWithString: "\(Int(currentTransparency * 100))%")
-        percentLabel.font = NSFont.systemFont(ofSize: 12)
-        percentLabel.alignment = .right
-        percentLabel.frame = NSRect(x: rightX + 105 + sliderWidth + 8, y: previewY - 30, width: 42, height: 18)
-        content.addSubview(percentLabel)
-        transparencyValueLabel = percentLabel
+        // Grouped card behind Cursor — verified bounds: y=576, height=146
+        // (top=722), sits just below the preview box with consistent padding.
+        addSectionCard(to: content, x: rightX, y: 628, width: rightWidth, height: 146)
 
         // Cursor section
-        let cursorLabelY = previewY - 65
+        let cursorLabelY: CGFloat = 744
         let cursorSectionLabel = NSTextField(labelWithString: "Cursor")
         cursorSectionLabel.font = NSFont.boldSystemFont(ofSize: 12)
         cursorSectionLabel.frame = NSRect(x: rightX, y: cursorLabelY, width: 150, height: 18)
@@ -1593,15 +1086,137 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         content.addSubview(blink)
         blinkCheckbox = blink
 
-        // Default button, bottom-right
+        // ── Utilities section ────────────────────────────────────
+        let utilitiesLabelY: CGFloat = 590
+
+        // Grouped card — verified bounds: y=348, height=220 (top=568).
+        addSectionCard(to: content, x: rightX, y: 400, width: rightWidth, height: 220)
+
+        let utilitiesLabel = NSTextField(labelWithString: "Utilities  (up to \(maxLaunchSlots))")
+        utilitiesLabel.font = NSFont.boldSystemFont(ofSize: 12)
+        utilitiesLabel.frame = NSRect(x: rightX, y: utilitiesLabelY, width: 250, height: 18)
+        content.addSubview(utilitiesLabel)
+
+        let utilitiesListContainer = NSView(frame: NSRect(x: rightX, y: utilitiesLabelY - 148, width: rightWidth, height: 144))
+        content.addSubview(utilitiesListContainer)
+        self.utilitiesListContainer = utilitiesListContainer
+        refreshUtilitySlotRows()
+
+        let addBtn = NSButton(title: "Add App…", target: self, action: #selector(addUtilityApp))
+        addBtn.bezelStyle = .rounded
+        addBtn.frame = NSRect(x: rightX, y: utilitiesLabelY - 178, width: 110, height: 24)
+        content.addSubview(addBtn)
+        addUtilityButton = addBtn
+
+        // ── Integrations section ─────────────────────────────────
+        let integrationsLabelY: CGFloat = 362
+
+        // Grouped card — verified bounds: y=70, height=270 (top=340).
+        addSectionCard(to: content, x: rightX, y: 64, width: rightWidth, height: 328)
+
+        let integrationsLabel = NSTextField(labelWithString: "Services  (for System Info)")
+        integrationsLabel.font = NSFont.boldSystemFont(ofSize: 12)
+        integrationsLabel.frame = NSRect(x: rightX, y: integrationsLabelY, width: 280, height: 18)
+        content.addSubview(integrationsLabel)
+
+        let existingConfig = loadSharedConfig()
+        let fieldFont = NSFont.systemFont(ofSize: 11)   // matches the label size instead of defaulting to the larger system size
+
+        let syncthingKeyLabel = NSTextField(labelWithString: "Syncthing API Key")
+        syncthingKeyLabel.font = NSFont.systemFont(ofSize: 11)
+        syncthingKeyLabel.frame = NSRect(x: rightX, y: integrationsLabelY - 32, width: 200, height: 14)
+        content.addSubview(syncthingKeyLabel)
+        let syncthingKeyField = NSTextField(frame: NSRect(x: rightX, y: integrationsLabelY - 62, width: rightWidth, height: 22))
+        syncthingKeyField.font = fieldFont
+        syncthingKeyField.stringValue = existingConfig.syncthingAPIKey ?? ""
+        syncthingKeyField.placeholderString = "Syncthing web UI → Settings → GUI → API Key"
+        content.addSubview(syncthingKeyField)
+        self.syncthingKeyField = syncthingKeyField
+
+        let syncthingFolderLabel = NSTextField(labelWithString: "Syncthing Folder ID(s) — comma-separated")
+        syncthingFolderLabel.font = NSFont.systemFont(ofSize: 11)
+        syncthingFolderLabel.frame = NSRect(x: rightX, y: integrationsLabelY - 94, width: 300, height: 14)
+        content.addSubview(syncthingFolderLabel)
+        let syncthingFolderField = NSTextField(frame: NSRect(x: rightX, y: integrationsLabelY - 124, width: rightWidth, height: 22))
+        syncthingFolderField.font = fieldFont
+        syncthingFolderField.stringValue = existingConfig.syncthingFolderIDs ?? ""
+        syncthingFolderField.placeholderString = "abc123, def456"
+        content.addSubview(syncthingFolderField)
+        self.syncthingFolderField = syncthingFolderField
+
+        let tailscalePathLabel = NSTextField(labelWithString: "Tailscale Binary Path")
+        tailscalePathLabel.font = NSFont.systemFont(ofSize: 11)
+        tailscalePathLabel.frame = NSRect(x: rightX, y: integrationsLabelY - 156, width: 200, height: 14)
+        content.addSubview(tailscalePathLabel)
+        let tailscaleFieldWidth = rightWidth - 80
+        let tailscalePathField = NSTextField(frame: NSRect(x: rightX, y: integrationsLabelY - 186, width: tailscaleFieldWidth, height: 22))
+        tailscalePathField.font = fieldFont
+        tailscalePathField.stringValue = existingConfig.tailscaleBinaryPath ?? ""
+        tailscalePathField.placeholderString = ".../Tailscale.app/Contents/MacOS/Tailscale"
+        content.addSubview(tailscalePathField)
+        self.tailscalePathField = tailscalePathField
+
+        let browseTailscaleBtn = NSButton(title: "Browse…", target: self, action: #selector(browseTailscaleBinary))
+        browseTailscaleBtn.bezelStyle = .rounded
+        browseTailscaleBtn.frame = NSRect(x: rightX + tailscaleFieldWidth + 8, y: integrationsLabelY - 187, width: 72, height: 24)
+        content.addSubview(browseTailscaleBtn)
+
+        let showTailscaleCheckboxField = NSButton(checkboxWithTitle: "Show Tailscale row", target: nil, action: nil)
+        showTailscaleCheckboxField.state = (existingConfig.showTailscale ?? true) ? .on : .off
+        showTailscaleCheckboxField.frame = NSRect(x: rightX, y: integrationsLabelY - 218, width: 180, height: 20)
+        content.addSubview(showTailscaleCheckboxField)
+        showTailscaleCheckbox = showTailscaleCheckboxField
+
+        let showSyncthingCheckboxField = NSButton(checkboxWithTitle: "Show Syncthing row", target: nil, action: nil)
+        showSyncthingCheckboxField.state = (existingConfig.showSyncthing ?? true) ? .on : .off
+        showSyncthingCheckboxField.frame = NSRect(x: rightX + 190, y: integrationsLabelY - 218, width: 180, height: 20)
+        content.addSubview(showSyncthingCheckboxField)
+        showSyncthingCheckbox = showSyncthingCheckboxField
+
+        let showVPNCheckboxField = NSButton(checkboxWithTitle: "Show VPN row", target: nil, action: nil)
+        showVPNCheckboxField.state = (existingConfig.showVPN ?? true) ? .on : .off
+        showVPNCheckboxField.frame = NSRect(x: rightX, y: integrationsLabelY - 244, width: 180, height: 20)
+        content.addSubview(showVPNCheckboxField)
+        showVPNCheckbox = showVPNCheckboxField
+
+        let saveIntegrationsBtn = NSButton(title: "Save Services", target: self, action: #selector(saveIntegrations))
+        saveIntegrationsBtn.bezelStyle = .rounded
+        saveIntegrationsBtn.frame = NSRect(x: rightX, y: integrationsLabelY - 286, width: 140, height: 24)
+        content.addSubview(saveIntegrationsBtn)
+
+        let statusLabel = NSTextField(labelWithString: "")
+        statusLabel.font = NSFont.systemFont(ofSize: 11)
+        statusLabel.textColor = .secondaryLabelColor
+        statusLabel.frame = NSRect(x: rightX + 150, y: integrationsLabelY - 282, width: rightWidth - 150, height: 16)
+        content.addSubview(statusLabel)
+        integrationsStatusLabel = statusLabel
+
+        // Default button, bottom-right — keyEquivalent "\r" gives it the
+        // native blue "primary action" styling automatically, the same
+        // way every Apple dialog highlights its default button.
         let defBtn = NSButton(title: "Default", target: self, action: #selector(makeCurrentDefault))
         defBtn.bezelStyle = .rounded
+        defBtn.keyEquivalent = "\r"
         defBtn.frame = NSRect(x: winWidth - 100, y: 16, width: 84, height: 28)
         content.addSubview(defBtn)
         defaultButton = defBtn
 
         win.contentView = content
         settingsWindow = win
+    }
+
+    // Subtle grouped-card background, the defining visual trait of modern
+    // System Settings — sections sit in distinct rounded panels rather
+    // than floating on one flat background. Added behind a section's own
+    // controls (added to the view hierarchy first, so it renders behind).
+    func addSectionCard(to content: NSView, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) {
+        let card = NSView(frame: NSRect(x: x - 12, y: y, width: width + 24, height: height))
+        card.wantsLayer = true
+        card.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.6).cgColor
+        card.layer?.cornerRadius = 10
+        card.layer?.borderWidth = 1
+        card.layer?.borderColor = NSColor.separatorColor.cgColor
+        content.addSubview(card)
     }
 
     func makeSwatchImage(theme: ColorTheme) -> NSImage {
@@ -1627,14 +1242,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         updateDefaultButtonState()
     }
 
-    @objc func settingsTransparencyChanged(_ sender: NSSlider) {
-        currentTransparency = CGFloat(sender.doubleValue)
-        transparencyValueLabel?.stringValue = "\(Int(currentTransparency * 100))%"
-        applyLiveState()
-        refreshPreview()
-        updateDefaultButtonState()
-    }
-
     @objc func cursorShapeChanged(_ sender: NSButton) {
         guard let shape = CursorShape(rawValue: sender.tag) else { return }
         currentCursorShape = shape
@@ -1653,18 +1260,146 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
     @objc func makeCurrentDefault() {
         savedThemeIndex = currentThemeIndex
-        savedTransparency = currentTransparency
         savedCursorShape = currentCursorShape
         savedCursorBlink = currentCursorBlink
 
         let defaults = UserDefaults.standard
         defaults.set(savedThemeIndex, forKey: themeIndexDefaultsKey)
-        defaults.set(Double(savedTransparency), forKey: transparencyDefaultsKey)
         defaults.set(savedCursorShape.rawValue, forKey: cursorShapeDefaultsKey)
         defaults.set(savedCursorBlink, forKey: cursorBlinkDefaultsKey)
 
         refreshSidebarSelection()
         updateDefaultButtonState()
+    }
+
+    // MARK: - Utilities list
+
+    func refreshUtilitySlotRows() {
+        guard let listContainer = utilitiesListContainer else { return }
+        listContainer.subviews.forEach { $0.removeFromSuperview() }
+        utilitySlotRows.removeAll()
+
+        let slots = loadLaunchSlots()
+        let rowHeight: CGFloat = 24
+        let containerWidth = listContainer.bounds.width
+
+        if slots.isEmpty {
+            let empty = NSTextField(labelWithString: "No utilities configured yet")
+            empty.font = NSFont.systemFont(ofSize: 11)
+            empty.textColor = .secondaryLabelColor
+            empty.frame = NSRect(x: 0, y: listContainer.bounds.height - rowHeight, width: containerWidth, height: rowHeight)
+            listContainer.addSubview(empty)
+            return
+        }
+
+        for (index, slot) in slots.enumerated() {
+            let rowY = listContainer.bounds.height - CGFloat(index + 1) * rowHeight
+            let rowContainer = NSView(frame: NSRect(x: 0, y: rowY, width: containerWidth, height: rowHeight))
+
+            let kindTag = slot.kind == "companion" ? "●" : "○"
+            let label = NSTextField(labelWithString: "\(kindTag)  \(slot.displayName)")
+            label.font = NSFont.systemFont(ofSize: 12)
+            label.frame = NSRect(x: 4, y: 3, width: containerWidth - 34, height: 18)
+            label.lineBreakMode = .byTruncatingTail
+            rowContainer.addSubview(label)
+
+            let removeBtn = NSButton(frame: NSRect(x: containerWidth - 24, y: 2, width: 18, height: 18))
+            removeBtn.image = NSImage(systemSymbolName: "minus.circle.fill", accessibilityDescription: "Remove")
+            removeBtn.isBordered = false
+            removeBtn.imagePosition = .imageOnly
+            removeBtn.contentTintColor = .secondaryLabelColor
+            removeBtn.target = self
+            removeBtn.action = #selector(removeUtilitySlot(_:))
+            removeBtn.tag = index
+            rowContainer.addSubview(removeBtn)
+
+            listContainer.addSubview(rowContainer)
+            utilitySlotRows.append((container: rowContainer, label: label, removeButton: removeBtn))
+        }
+    }
+
+    @objc func removeUtilitySlot(_ sender: NSButton) {
+        var slots = loadLaunchSlots()
+        guard slots.indices.contains(sender.tag) else { return }
+        slots.remove(at: sender.tag)
+        persistLaunchSlots(slots)
+        refreshUtilitySlotRows()
+        rebuildUtilitiesMenu()
+    }
+
+    @objc func addUtilityApp() {
+        var slots = loadLaunchSlots()
+        guard slots.count < maxLaunchSlots else {
+            let alert = NSAlert()
+            alert.messageText = "Utilities list is full"
+            alert.informativeText = "Remove one before adding another — up to \(maxLaunchSlots) at a time."
+            alert.alertStyle = .informational
+            alert.runModal()
+            return
+        }
+
+        let panel = NSOpenPanel()
+        panel.title = "Choose an App"
+        panel.allowedContentTypes = [.application]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        // Ask for a display name, defaulting to the app's own name.
+        let defaultName = url.deletingPathExtension().lastPathComponent
+        let nameAlert = NSAlert()
+        nameAlert.messageText = "Name for this shortcut"
+        nameAlert.informativeText = "Shown in the Utilities menu."
+        nameAlert.addButton(withTitle: "Add")
+        nameAlert.addButton(withTitle: "Cancel")
+        let nameField = NSTextField(frame: NSRect(x: 0, y: 0, width: 260, height: 24))
+        nameField.stringValue = defaultName
+        nameAlert.accessoryView = nameField
+        guard nameAlert.runModal() == .alertFirstButtonReturn else { return }
+
+        let displayName = nameField.stringValue.isEmpty ? defaultName : nameField.stringValue
+        slots.append(LaunchSlot(kind: "custom", folderName: nil, path: url.path, displayName: displayName))
+        persistLaunchSlots(slots)
+        refreshUtilitySlotRows()
+        rebuildUtilitiesMenu()
+    }
+
+    // MARK: - Integrations
+
+    @objc func browseTailscaleBinary() {
+        let panel = NSOpenPanel()
+        panel.title = "Locate the Tailscale Binary"
+        panel.message = "Navigate into Tailscale.app to find the actual executable (usually Contents/MacOS/Tailscale)."
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        // Without this, NSOpenPanel treats .app bundles as one opaque
+        // selectable unit rather than letting you navigate inside — but
+        // the actual binary we need is nested inside the bundle.
+        panel.treatsFilePackagesAsDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        tailscalePathField?.stringValue = url.path
+    }
+
+    @objc func saveIntegrations() {
+        var config = loadSharedConfig()
+        config.syncthingAPIKey = syncthingKeyField?.stringValue
+        config.syncthingFolderIDs = syncthingFolderField?.stringValue
+        config.tailscaleBinaryPath = tailscalePathField?.stringValue
+        config.showTailscale = (showTailscaleCheckbox?.state ?? .on) == .on
+        config.showSyncthing = (showSyncthingCheckbox?.state ?? .on) == .on
+        config.showVPN = (showVPNCheckbox?.state ?? .on) == .on
+        saveSharedConfig(config)
+
+        integrationsStatusLabel?.stringValue = "Saved"
+        integrationsStatusLabel?.textColor = .systemGreen
+        // Clear the confirmation after a moment, same low-key pattern as
+        // any other transient status message.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            self?.integrationsStatusLabel?.stringValue = ""
+        }
     }
 
     func refreshSidebarSelection() {
@@ -1685,8 +1420,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
     func refreshPreview() {
         let theme = colorThemes[currentThemeIndex]
-        let bg = theme.background.withAlphaComponent(currentTransparency)
-        previewBox?.layer?.backgroundColor = bg.cgColor
+        previewBox?.layer?.backgroundColor = theme.background.cgColor
         for line in previewLines {
             line.textColor = theme.foreground
         }
@@ -1701,7 +1435,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
     func updateDefaultButtonState() {
         let matchesSaved = currentThemeIndex == savedThemeIndex
-            && currentTransparency == savedTransparency
             && currentCursorShape == savedCursorShape
             && currentCursorBlink == savedCursorBlink
         defaultButton?.isEnabled = !matchesSaved
@@ -1717,12 +1450,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
         if closedWindow === settingsWindow {
             currentThemeIndex = savedThemeIndex
-            currentTransparency = savedTransparency
             currentCursorShape = savedCursorShape
             currentCursorBlink = savedCursorBlink
             applyLiveState()
-        } else if closedWindow === telemetryWindow {
-            stopTelemetryRefresh()
         }
     }
 }
