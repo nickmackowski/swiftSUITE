@@ -1,3 +1,10 @@
+// ═══════════════════════════════════════════════════════════════
+// APP: swiftVAULT
+// AES-256 encrypted password manager
+// File: swiftVAULT/source_code/scv.main.swift
+// Updated: 2026-08-11
+// ═══════════════════════════════════════════════════════════════
+
 import Foundation
 import CryptoKit
 

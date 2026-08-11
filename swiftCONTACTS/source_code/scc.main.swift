@@ -1,3 +1,10 @@
+// ═══════════════════════════════════════════════════════════════
+// APP: swiftCONTACTS
+// Encrypted contact book
+// File: swiftCONTACTS/source_code/scc.main.swift
+// Updated: 2026-08-11
+// ═══════════════════════════════════════════════════════════════
+
 import Foundation
 import CryptoKit
 

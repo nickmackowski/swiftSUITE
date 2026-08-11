@@ -1,3 +1,10 @@
+// ═══════════════════════════════════════════════════════════════
+// APP: swiftCALENDAR
+// Calendar with ICS, METAR, and TAF support
+// File: swiftCALENDAR/source_code/sccm.main.swift
+// Updated: 2026-08-11
+// ═══════════════════════════════════════════════════════════════
+
 import Foundation
 
 // MARK: - App Storage Location

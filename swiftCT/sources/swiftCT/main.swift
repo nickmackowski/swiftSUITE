@@ -2,6 +2,7 @@
 // APP: swiftCT
 // The main swiftSUITE terminal launcher app
 // File: Sources/swiftCT/main.swift
+// Updated: 2026-08-11
 // ═══════════════════════════════════════════════════════════════
 
 import AppKit

@@ -1,7 +1,9 @@
 // ═══════════════════════════════════════════════════════════════
-// APP: swiftCLOCK_v2
-// xclock-style floating companion app
-// File: Sources/swiftCLOCK/main.swift
+// APP: swiftCLOCKv2
+// xclock-style floating companion app with tracking eyes and
+// Day-Date-style complications
+// File: Sources/swiftCLOCKv2/main.swift
+// Updated: 2026-08-11
 // ═══════════════════════════════════════════════════════════════
 
 import Cocoa
@@ -26,7 +28,7 @@ final class ClockFaceView: NSView {
     private let hourHandColor = NSColor(calibratedRed: 145.0/255, green: 170.0/255, blue: 255.0/255, alpha: 1.0)   // blue, matches the icon's blue dot
     private let minuteHandColor = NSColor(calibratedRed: 52.0/255, green: 199.0/255, blue: 89.0/255, alpha: 1.0)   // green, matches the icon's green dot + System Info's Memory bar
 
-    var isDarkMode = false {
+    var isDarkMode = true {   // defaults to dark, matching swiftCT and swiftSYSINFO's own default theme
         didSet { needsDisplay = true }
     }
 
@@ -188,7 +190,7 @@ final class ClockFaceView: NSView {
 
         let reverseItem = NSMenuItem(title: "Reverse Colors", action: #selector(AppDelegate.toggleColorMode), keyEquivalent: "")
         reverseItem.target = appDelegate
-        reverseItem.state = isDarkMode ? .on : .off
+        reverseItem.state = isDarkMode ? .off : .on   // dark IS the default, so "reversed" means light
         menu.addItem(reverseItem)
 
         menu.addItem(NSMenuItem.separator())
@@ -586,6 +588,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.ignoresMouseEvents = false
         window.acceptsMouseMovedEvents = true
 
+        // Remembers size and position across launches automatically —
+        // if a frame was saved from a previous session, this restores
+        // it immediately, overriding the centered default computed
+        // above. No manual save/load code needed; AppKit handles both
+        // the writing (on move/resize) and reading (here) itself.
+        window.setFrameAutosaveName("swiftCLOCKv2MainWindow")
+
         clockView = ClockFaceView(frame: NSRect(origin: .zero, size: windowSize))
         clockView.minWindowSize = minWindowSize
         clockView.maxWindowSize = maxWindowSize
@@ -653,7 +662,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func toggleColorMode() {
         clockView.isDarkMode.toggle()
-        reverseColorsMenuItem?.state = clockView.isDarkMode ? .on : .off
+        reverseColorsMenuItem?.state = clockView.isDarkMode ? .off : .on
     }
 
     @objc private func showAboutPanel() {

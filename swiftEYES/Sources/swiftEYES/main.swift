@@ -2,6 +2,7 @@
 // APP: swiftEYES
 // xeyes-style floating companion app
 // File: Sources/swiftEYES/main.swift
+// Updated: 2026-08-11
 // ═══════════════════════════════════════════════════════════════
 
 import Cocoa
@@ -15,13 +16,13 @@ final class EyesView: NSView {
     var eyeCount: Int = 2
 
     // Colors — light mode is the classic white sclera / black pupil; dark mode
-    // matches swiftLT's "Clear Dark" theme (its default) for consistency across the suite.
+    // matches swiftCT's "Clear Dark" theme (its default) for consistency across the suite.
     private let lightScleraColor = NSColor(calibratedRed: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)          // #FFFFFF
     private let lightMarkColor = NSColor(calibratedRed: 89.0/255, green: 89.0/255, blue: 89.0/255, alpha: 1.0)  // #595959
-    private let darkScleraColor = NSColor(calibratedRed: 0.098039, green: 0.113725, blue: 0.152941, alpha: 1.0) // swiftLT "Clear Dark" background
-    private let darkMarkColor = NSColor.white                                                                    // swiftLT "Clear Dark" foreground
+    private let darkScleraColor = NSColor(calibratedRed: 0.098039, green: 0.113725, blue: 0.152941, alpha: 1.0) // swiftCT "Clear Dark" background
+    private let darkMarkColor = NSColor.white                                                                    // swiftCT "Clear Dark" foreground
 
-    var isDarkMode = false {
+    var isDarkMode = true {   // defaults to dark, matching swiftCT and swiftSYSINFO's own default theme
         didSet { needsDisplay = true }
     }
 
@@ -180,7 +181,7 @@ final class EyesView: NSView {
 
         let reverseItem = NSMenuItem(title: "Reverse Colors", action: #selector(AppDelegate.toggleColorMode), keyEquivalent: "")
         reverseItem.target = appDelegate
-        reverseItem.state = isDarkMode ? .on : .off
+        reverseItem.state = isDarkMode ? .off : .on   // dark IS the default, so "reversed" means light
         menu.addItem(reverseItem)
 
         menu.addItem(NSMenuItem.separator())
@@ -401,6 +402,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.ignoresMouseEvents = false         // set true instead if you want click-through
         window.acceptsMouseMovedEvents = true
 
+        // Remembers size and position across launches automatically —
+        // if a frame was saved from a previous session, this restores
+        // it immediately, overriding the centered default computed
+        // above. No manual save/load code needed; AppKit handles both
+        // the writing (on move/resize) and reading (here) itself.
+        window.setFrameAutosaveName("swiftEYESMainWindow")
+
         eyesView = EyesView(frame: NSRect(origin: .zero, size: windowSize))
         eyesView.minWindowSize = minWindowSize
         eyesView.maxWindowSize = maxWindowSize
@@ -470,7 +478,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func toggleColorMode() {
         eyesView.isDarkMode.toggle()
-        reverseColorsMenuItem?.state = eyesView.isDarkMode ? .on : .off
+        reverseColorsMenuItem?.state = eyesView.isDarkMode ? .off : .on
     }
 
     @objc private func showAboutPanel() {

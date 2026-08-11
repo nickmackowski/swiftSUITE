@@ -1,3 +1,10 @@
+// ═══════════════════════════════════════════════════════════════
+// APP: swiftNOTES
+// AES-256 encrypted notebook with archive
+// File: swiftNOTES/source_code/scn.main.swift
+// Updated: 2026-08-11
+// ═══════════════════════════════════════════════════════════════
+
 import Foundation
 import CryptoKit
 

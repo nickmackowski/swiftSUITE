@@ -1,3 +1,10 @@
+// ═══════════════════════════════════════════════════════════════
+// APP: swiftMAIL
+// IMAP/SMTP email client
+// File: swiftMAIL/source_code/scm.main.swift
+// Updated: 2026-08-11
+// ═══════════════════════════════════════════════════════════════
+
 import Foundation
 import Network
 import CryptoKit

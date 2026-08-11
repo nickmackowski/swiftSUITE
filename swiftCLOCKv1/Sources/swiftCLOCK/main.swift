@@ -1,3 +1,10 @@
+// ═══════════════════════════════════════════════════════════════
+// APP: swiftCLOCKv1
+// The original design — a flat, minimal analog clock companion app
+// File: Sources/swiftCLOCKv1/main.swift
+// Updated: 2026-08-11
+// ═══════════════════════════════════════════════════════════════
+
 import Cocoa
 
 // MARK: - ClockFaceView
@@ -7,18 +14,18 @@ import Cocoa
 
 final class ClockFaceView: NSView {
 
-    // Colors sourced from swiftLT: pure white / dark charcoal-grey for light mode
-    // (screenshot reference), and swiftLT's "Clear Dark" theme (its default) for the reversed mode.
+    // Colors sourced from swiftCT: pure white / dark charcoal-grey for light mode
+    // (screenshot reference), and swiftCT's "Clear Dark" theme (its default) for the reversed mode.
     private let lightDialColor = NSColor(calibratedRed: 1.0, green: 1.0, blue: 1.0, alpha: 1.0)          // #FFFFFF
     private let lightMarkColor = NSColor(calibratedRed: 89.0/255, green: 89.0/255, blue: 89.0/255, alpha: 1.0)  // #595959
-    private let darkDialColor = NSColor(calibratedRed: 0.098039, green: 0.113725, blue: 0.152941, alpha: 1.0)   // swiftLT "Clear Dark" background
-    private let darkMarkColor = NSColor.white                                                                    // swiftLT "Clear Dark" foreground
+    private let darkDialColor = NSColor(calibratedRed: 0.098039, green: 0.113725, blue: 0.152941, alpha: 1.0)   // swiftCT "Clear Dark" background
+    private let darkMarkColor = NSColor.white                                                                    // swiftCT "Clear Dark" foreground
 
     private let secondHandColor = NSColor.systemRed // stays red in both modes, matches the icon's red dot
     private let hourHandColor = NSColor(calibratedRed: 145.0/255, green: 170.0/255, blue: 255.0/255, alpha: 1.0)   // blue, matches the icon's blue dot
     private let minuteHandColor = NSColor(calibratedRed: 52.0/255, green: 199.0/255, blue: 89.0/255, alpha: 1.0)   // green, matches the icon's green dot + System Info's Memory bar
 
-    var isDarkMode = false {
+    var isDarkMode = true {   // defaults to dark, matching swiftCT and swiftSYSINFO's own default theme
         didSet { needsDisplay = true }
     }
 
@@ -180,7 +187,7 @@ final class ClockFaceView: NSView {
 
         let reverseItem = NSMenuItem(title: "Reverse Colors", action: #selector(AppDelegate.toggleColorMode), keyEquivalent: "")
         reverseItem.target = appDelegate
-        reverseItem.state = isDarkMode ? .on : .off
+        reverseItem.state = isDarkMode ? .off : .on   // dark IS the default, so "reversed" means light
         menu.addItem(reverseItem)
 
         menu.addItem(NSMenuItem.separator())
@@ -485,6 +492,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.ignoresMouseEvents = false
         window.acceptsMouseMovedEvents = true
 
+        // Remembers size and position across launches automatically —
+        // if a frame was saved from a previous session, this restores
+        // it immediately, overriding the centered default computed
+        // above. No manual save/load code needed; AppKit handles both
+        // the writing (on move/resize) and reading (here) itself.
+        window.setFrameAutosaveName("swiftCLOCKv1MainWindow")
+
         clockView = ClockFaceView(frame: NSRect(origin: .zero, size: windowSize))
         clockView.minWindowSize = minWindowSize
         clockView.maxWindowSize = maxWindowSize
@@ -552,7 +566,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func toggleColorMode() {
         clockView.isDarkMode.toggle()
-        reverseColorsMenuItem?.state = clockView.isDarkMode ? .on : .off
+        reverseColorsMenuItem?.state = clockView.isDarkMode ? .off : .on
     }
 
     @objc private func showAboutPanel() {

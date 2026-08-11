@@ -2,6 +2,7 @@
 // APP: swiftSYSINFO
 // BGInfo-style system telemetry companion app
 // File: Sources/swiftSYSINFO/main.swift
+// Updated: 2026-08-11
 // ═══════════════════════════════════════════════════════════════
 
 import Cocoa

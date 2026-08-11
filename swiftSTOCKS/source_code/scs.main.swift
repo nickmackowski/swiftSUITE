@@ -1,3 +1,10 @@
+// ═══════════════════════════════════════════════════════════════
+// APP: swiftSTOCKS
+// Portfolio tracker with live market data
+// File: swiftSTOCKS/source_code/scs.main.swift
+// Updated: 2026-08-11
+// ═══════════════════════════════════════════════════════════════
+
 import Foundation
 
 // MARK: - App Storage Location

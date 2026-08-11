@@ -1,3 +1,10 @@
+// ═══════════════════════════════════════════════════════════════
+// APP: swiftCORE
+// Launcher and authentication hub
+// File: swiftCORE/source_code/scl.main.swift
+// Updated: 2026-08-11
+// ═══════════════════════════════════════════════════════════════
+
 import Foundation
 import CryptoKit
 
