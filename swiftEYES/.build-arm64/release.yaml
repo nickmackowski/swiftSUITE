@@ -1,0 +1,66 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<swiftEYES-arm64-apple-macosx-release.exe>","<swiftEYES-arm64-apple-macosx-release.module>"]
+  "swiftEYES-arm64-apple-macosx-release.exe": ["<swiftEYES-arm64-apple-macosx-release.exe>"]
+  "swiftEYES-arm64-apple-macosx-release.module": ["<swiftEYES-arm64-apple-macosx-release.module>"]
+  "test": ["<swiftEYES-arm64-apple-macosx-release.exe>","<swiftEYES-arm64-apple-macosx-release.module>"]
+default: "main"
+nodes:
+  "/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/Sources/swiftEYES/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+commands:
+  "/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Library/Developer/CommandLineTools/usr/bin/swiftc"]
+    outputs: ["/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt"
+
+  "/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/Sources/swiftEYES/main.swift"]
+    outputs: ["/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.build/sources"]
+    description: "Write auxiliary file /Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.build/sources"
+
+  "/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.build/main.swift.o"]
+    outputs: ["/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.product/Objects.LinkFileList"
+
+  "<swiftEYES-arm64-apple-macosx-release.exe>":
+    tool: phony
+    inputs: ["/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES"]
+    outputs: ["<swiftEYES-arm64-apple-macosx-release.exe>"]
+
+  "<swiftEYES-arm64-apple-macosx-release.module>":
+    tool: phony
+    inputs: ["/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.build/main.swift.o","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/Modules/swiftEYES.swiftmodule"]
+    outputs: ["<swiftEYES-arm64-apple-macosx-release.module>"]
+
+  "C.swiftEYES-arm64-apple-macosx-release.exe":
+    tool: shell
+    inputs: ["/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.build/main.swift.o","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.product/Objects.LinkFileList"]
+    outputs: ["/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES"]
+    description: "Linking ./.build-arm64/arm64-apple-macosx/release/swiftEYES"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-L","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release","-o","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES","-module-name","swiftEYES","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-dead_strip","-Xlinker","-alias","-Xlinker","_swiftEYES_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Library/Developer/CommandLineTools/usr/lib/swift-6.2/macosx","-target","arm64-apple-macosx12.0","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g"]
+
+  "C.swiftEYES-arm64-apple-macosx-release.module":
+    tool: shell
+    inputs: ["/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/Sources/swiftEYES/main.swift","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.build/sources"]
+    outputs: ["/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.build/main.swift.o","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/Modules/swiftEYES.swiftmodule"]
+    description: "Compiling Swift Module 'swiftEYES' (1 sources)"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-module-name","swiftEYES","-emit-dependencies","-emit-module","-emit-module-path","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/Modules/swiftEYES.swiftmodule","-output-file-map","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.build/output-file-map.json","-whole-module-optimization","-num-threads","10","-c","@/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/swiftEYES.build/sources","-I","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/Modules","-target","arm64-apple-macosx12.0","-whole-module-optimization","-num-threads","10","-serialize-diagnostics","-O","-j10","-DSWIFT_PACKAGE","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/.build-arm64/arm64-apple-macosx/release/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","swiftEYES_main","-swift-version","5","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g","-Xcc","-isysroot","-Xcc","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-Xcc","-fPIC","-Xcc","-g","-package-name","swifteyes"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/Sources/swiftEYES/","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/Package.swift","/Users/jzmfcz/Documents/swiftSUITE/swiftEYES/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+

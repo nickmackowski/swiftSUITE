@@ -45,6 +45,9 @@ Detailed setup and usage guides for each app:
 - [swiftMAIL](docs/swiftMAIL.md)
 - [swiftADMIN](docs/swiftADMIN.md)
 - [swiftCT](docs/swiftCT.md)
+- [swiftEYES](docs/swiftEYES.md)
+- [swiftCLOCK](docs/swiftCLOCK.md)
+- [swiftSYSINFO](docs/swiftSYSINFO.md)
 
 ---
 
@@ -56,6 +59,7 @@ Detailed setup and usage guides for each app:
 - **Live navigation** — single-key jumps between all apps via `execv`, no launcher round-trips
 - **Web accessible** — serve the full suite in any browser via ttyd + Tailscale
 - **Native local launcher** — swiftCT drops you straight into swiftCORE with a native macOS app, no browser or ttyd required; double-click for a GUI window, or run it directly from a shell
+- **Companion utilities** — swiftEYES, swiftCLOCK, and swiftSYSINFO extend swiftCT with quick-access desktop tools, launchable from its Utilities menu; swiftCLOCKv2 adds live cursor-tracking eyes and Day-Date-style complications to its watch face, and swiftSYSINFO surfaces VPN/Tailscale/Syncthing status alongside live CPU/memory/disk telemetry
 - **Aviation weather** — one combined setup in swiftCALENDAR creates both a live METAR (current conditions) and TAF (forecast) account from a single airport code, with the real airport name and city decoded in the detail view
 - **ICS calendar sync** — supports any CalDAV/ICS feed (iCloud, Outlook, Google Calendar)
 - **Calendar overlays** — birthdays (from swiftCONTACTS) and due-date reminders (from swiftNOTES) appear automatically on swiftCALENDAR's month view, computed live on every launch — nothing is duplicated or stored twice
@@ -98,6 +102,8 @@ python3 swiftADMIN.py
 # Select [1] Build All Apps
 ```
 
+A successful build also automatically creates a friendly **"Open swiftSUITE (swiftCT).app"** alias right in the swiftSUITE folder — that's the recommended way to actually launch the suite (see First Launch below).
+
 Or build manually:
 
 ```bash
@@ -109,9 +115,26 @@ lipo -create swiftCORE_arm64 swiftCORE_x86 -output swiftCORE
 
 Repeat for each app directory. If an app's source has been moved into its own `source_code/` subfolder (see Directory Structure below), adjust the path in the `swiftc` command accordingly — `swiftADMIN` handles this automatically either way.
 
-> **Note:** `swiftCT` builds differently from the seven core apps above — it's a Swift Package Manager project, not a single `.main.swift` file compiled directly via `swiftc`. `swiftADMIN`'s Build All Apps handles this automatically by running swiftCT's own `build.sh`, which produces both a native `.app` bundle and a standalone CLI binary. See [docs/swiftCT.md](docs/swiftCT.md) for details, or build it manually with `cd swiftCT && ./build.sh`.
+> **Why two build methods?** The seven core apps above are pure terminal programs — they read/write stdin/stdout directly, with no windows or GUI framework, so a single `.swift` file compiled straight via `swiftc` is genuinely the simplest correct approach. `swiftCT` and its three companion utilities (`swiftEYES`, `swiftCLOCK`, `swiftSYSINFO`) are real native macOS GUI apps — actual windows, buttons, and menus — which fundamentally requires an `.app` bundle (Finder won't treat something as a proper double-clickable application without one) and, for swiftCT specifically, Swift Package Manager, since that's the only way to pull in an external dependency like SwiftTerm at all. This is standard practice in Swift development generally — CLI tools and GUI apps almost always have separate build setups, even within one larger codebase. `swiftADMIN`'s Build All Apps handles both transparently — you never have to think about which one an app needs — auto-detecting SPM projects by the presence of `Package.swift` and running that app's own `build.sh`, which produces both a native `.app` bundle and a standalone CLI binary. Build any of the four manually with `cd <app folder> && ./build.sh`. See [docs/swiftCT.md](docs/swiftCT.md) for swiftCT's own details.
 
 ### 3. First launch
+
+The recommended way in is `swiftCT` — a native macOS app that drops you straight into swiftCORE, no browser or shell command needed. After Build All Apps completes, an alias is created automatically right in the swiftSUITE folder:
+
+```
+Open swiftSUITE (swiftCT).app
+```
+
+Just double-click it. (If you ever need to recreate it manually — say, after moving the folder — swiftADMIN's **[6] Refresh "Open swiftSUITE (swiftCT)" Alias** does it in one step.)
+
+Prefer a shell? Run swiftCT directly for a zero-frills passthrough into swiftCORE:
+
+```bash
+cd swiftCT
+./swiftCT
+```
+
+Or, if you'd rather skip swiftCT entirely and run swiftCORE on its own:
 
 ```bash
 cd swiftCORE
@@ -121,6 +144,8 @@ cd swiftCORE
 On first run, swiftCORE prompts you to create a username and password. This password encrypts your Notes, Vault, and Contacts data.
 
 <img width="2314" height="1688" alt="image" src="https://github.com/user-attachments/assets/f07241c1-f696-4a40-98a7-f26df76b2b79" />
+
+See [swiftCT's documentation](docs/swiftCT.md) for its full feature set — themes, SSH remote sessions, and the Utilities menu for launching companion apps.
 
 ---
 
@@ -140,6 +165,24 @@ swiftSUITE/
 │   └── source_code/
 │       ├── sccm.main.swift
 │       └── calendar_sync.py   # ICS / METAR / TAF sync engine
+├── swiftCLOCKv1/
+│   ├── swiftCLOCKv1.app        # original design, no complications
+│   ├── swiftCLOCKv1
+│   ├── Package.swift
+│   ├── Info.plist
+│   ├── build.sh
+│   └── Sources/
+│       └── swiftCLOCKv1/
+│           └── main.swift
+├── swiftCLOCKv2/
+│   ├── swiftCLOCKv2.app        # adds tracking eyes and Day-Date complications
+│   ├── swiftCLOCKv2
+│   ├── Package.swift
+│   ├── Info.plist
+│   ├── build.sh
+│   └── Sources/
+│       └── swiftCLOCKv2/
+│           └── main.swift
 ├── swiftCONTACTS/
 │   ├── swiftCONTACTS
 │   ├── logs/
@@ -158,8 +201,18 @@ swiftSUITE/
 │   ├── build.sh
 │   ├── README.md
 │   ├── THIRD-PARTY-LICENSES.md # SwiftTerm's MIT license
+│   ├── swiftsuite-config.json  # shared config, also read by swiftSYSINFO
 │   └── Sources/
 │       └── swiftCT/
+│           └── main.swift
+├── swiftEYES/
+│   ├── swiftEYES.app
+│   ├── swiftEYES
+│   ├── Package.swift
+│   ├── Info.plist
+│   ├── build.sh
+│   └── Sources/
+│       └── swiftEYES/
 │           └── main.swift
 ├── swiftMAIL/
 │   ├── swiftMAIL
@@ -178,6 +231,15 @@ swiftSUITE/
 │   ├── logs/
 │   └── source_code/
 │       └── scs.main.swift
+├── swiftSYSINFO/
+│   ├── swiftSYSINFO.app
+│   ├── swiftSYSINFO
+│   ├── Package.swift
+│   ├── Info.plist
+│   ├── build.sh
+│   └── Sources/
+│       └── swiftSYSINFO/
+│           └── main.swift
 ├── swiftVAULT/
 │   ├── swiftVAULT
 │   ├── logs/
@@ -195,27 +257,9 @@ swiftSUITE/
 
 ## Web Access via ttyd
 
-> **On the Mac itself?** You probably don't need this section — `swiftCT` (see below) gives you a native app that launches straight into swiftCORE, no browser or ttyd required. ttyd is for reaching the suite from *other* devices — your phone, iPad, or someone else's computer — over your Tailscale network.
+> **On the Mac itself?** You probably don't need this section — `swiftCT` (see below) gives you a native app that launches straight into swiftCORE, no browser or ttyd required. ttyd is for reaching the suite from *other* devices — your phone, iPad, or someone else's computer — over your own private network (e.g. [Tailscale](https://tailscale.com)).
 
-### What is Homebrew?
-
-Homebrew is the most widely used package manager for macOS. It lets you install command-line tools with a single command. If you do not have Homebrew installed:
-
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-```
-
-This only needs to be done once. Homebrew will also install Xcode Command Line Tools if they are not already present.
-
-### What is Tailscale?
-
-Tailscale is a zero-configuration VPN that creates a private encrypted network between your devices. Once installed on your Mac and any other device (iPhone, iPad, another computer), those devices can reach each other securely over the internet as if they were on the same local network — without opening any ports on your router or exposing anything to the public internet. It is free for personal use.
-
-swiftSUITE running on a home Mac can be accessed securely from anywhere in the world using Tailscale, with no additional configuration required.
-
-### Installing and Running ttyd
-
-ttyd is a tool that serves a terminal session over HTTP, rendered in your browser using xterm.js. All ANSI colors, box-drawing characters, and keyboard input work correctly.
+ttyd is a small tool that serves a terminal session over HTTP, rendered in your browser using xterm.js. All ANSI colors, box-drawing characters, and keyboard input work correctly.
 
 ```bash
 # Install ttyd via Homebrew
@@ -223,13 +267,13 @@ brew install ttyd
 
 # Start via swiftADMIN (recommended)
 python3 swiftADMIN/swiftADMIN.py
-# Select [6] Start ttyd
+# Select [18] Start ttyd — also [19] ttyd Status, [20] Stop ttyd
 
 # Or start manually
 ttyd -p 7681 --writable ./swiftCORE/swiftCORE
 ```
 
-Then open `http://<your-tailscale-ip>:7681` in any browser on your Tailscale network.
+Then open `http://<your-private-network-ip>:7681` in any browser on that network.
 
 > **Security warning:** Never expose the ttyd port to the public internet. Always use Tailscale or another VPN. The `--writable` flag gives full terminal access to whoever connects.
 
@@ -246,6 +290,22 @@ Then open `http://<your-tailscale-ip>:7681` in any browser on your Tailscale net
 `swiftCT` is a native macOS terminal launcher for swiftCORE. Its primary mode is fully local — no browser, no ttyd, no network — spawning swiftCORE as a direct local process. Double-click `swiftCT.app` for a native GUI window with an embedded terminal, or run `./swiftCT` directly from a shell for a zero-frills passthrough straight into swiftCORE. It also includes two optional convenience extras — launching an external Terminal.app window, and connecting to a remote machine over SSH — for anyone who wants them; neither is required or used for normal swiftSUITE operation. See [swiftCT's own README](docs/swiftCT.md) for the full story, including why SSH isn't the primary access method here (short version: Syncthing keeping each machine's data in sync directly turned out to be simpler than one central machine reached over SSH).
 
 It's self-locating: swiftCT finds `swiftCORE` relative to its own position on disk, so the whole `swiftSUITE` folder can be moved, renamed, or copied anywhere and swiftCT still finds its neighbor correctly. It's built on [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) (MIT License — see [swiftCT/THIRD-PARTY-LICENSES.md](swiftCT/THIRD-PARTY-LICENSES.md)), and builds automatically as part of `swiftADMIN`'s Build All Apps. See the [swiftCT documentation](docs/swiftCT.md) for full details.
+
+---
+
+## Utilities
+
+Optional companion apps, launchable directly from swiftCT's Utilities menu (up to 6 configurable slots) or run standalone. These aren't part of the core suite's shared auth or navigation system — they're quick-access desktop extras.
+
+| App | Description |
+|-----|-------------|
+| swiftEYES | Classic xeyes-style floating companion, tracking your cursor wherever it goes |
+| swiftCLOCK | Analog clock — v1 is a clean original design; v2 adds live cursor-tracking eyes and Day-Date-style complications (a date window, and a red Sunday) to the same face |
+| swiftSYSINFO | BGInfo-style system telemetry dashboard — hardware info, live CPU/memory/disk/network usage, and VPN/Tailscale/Syncthing status at a glance |
+
+Documentation: [swiftEYES](docs/swiftEYES.md) · [swiftCLOCK](docs/swiftCLOCK.md) · [swiftSYSINFO](docs/swiftSYSINFO.md)
+
+Like swiftCT, all three are Swift Package Manager projects built as universal binaries via their own `build.sh`, and are picked up automatically by `swiftADMIN`'s Build All Apps.
 
 ---
 
@@ -271,26 +331,12 @@ Press any letter to jump directly to that app. The current app is highlighted in
 
 ---
 
-## Roadmap
-
-**v3.0 (current) — Complete ✅**
-
-A coordinated, suite-wide release: consistent header styling and versioning across every app, directory/log restructuring, and real new features — swiftNOTES gained remote email/text capture (with multi-account support), and swiftCALENDAR gained live birthday and due-date overlays, the combined aviation weather setup, and remote calendar entries sharing swiftNOTES' own capture pipeline. See each app's own documentation for full details.
-
-**v4.0 (planned)**
-- Seamless password change with full data re-encryption
-- F-key navigation — use F1-F7 for suite-wide app switching, eliminating all letter-key conflicts (e.g. C for Calendar, V for Vault, N for Notes). Function keys are currently unused across all apps and would make a clean replacement for the nav footer letter keys
-
-**Deliberately not planned**
-- Two-way calendar sync (pushing locally created events back to iCloud, Outlook, or Google Calendar) was considered and explicitly ruled out. swiftCALENDAR is meant to stay a quick-glance overlay tool, not a full calendar replacement — it remains read-only against external feeds by design.
-
----
-
 ## Contributing
 
 This started as a personal project. PRs welcome — especially for:
 - Additional calendar account types
 - Windows/Linux compatibility (currently macOS only)
+- F-key navigation — use F1-F7 for suite-wide app switching, eliminating all letter-key conflicts (e.g. C for Calendar, V for Vault, N for Notes). Function keys are currently unused across all apps and would make a clean replacement for the nav footer letter keys
 
 ---
 
