@@ -42,7 +42,7 @@ Configurable there:
 - **Tailscale Binary Path** — browsable via a file picker rather than typed manually, since the actual binary sits nested inside `Tailscale.app`'s bundle
 - **Show/hide toggles** for the Tailscale, Syncthing, and VPN rows in swiftSYSINFO, in case you don't use one or more of these services
 
-This data is stored in a shared config file (`swiftCT/.swiftsuite-config.json` as of this version — see note below) that both swiftCT and swiftSYSINFO read from.
+This data is stored in a shared config file (`swiftCT/swiftsuite-config.json` as of this version — see note below) that both swiftCT and swiftSYSINFO read from.
 
 > **Note:** this file's exact location has moved during development. If you're working from an older build, check `swiftCT/swiftsuite-config.json` (no leading dot) or the swiftSUITE root as fallback locations before assuming it's missing entirely.
 
