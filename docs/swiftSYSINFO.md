@@ -2,6 +2,8 @@
 
 A BGInfo-style system telemetry dashboard — a small floating panel showing hardware info, live resource usage, and network/sync/VPN status at a glance.
 
+<img width="412" height="674" alt="image" src="https://github.com/user-attachments/assets/cb02d4e4-3834-4718-a498-51a74874437e" />
+
 ---
 
 ## What It Shows
