@@ -81,7 +81,7 @@ Found Raleigh-Durham International Airport (Raleigh/Durham, NC) — lat/lon auto
 
 If the airport is in the pre-seeded `known_airports.json` list (over 400 airports — mostly US, with a good number of major international ones too, see [the full list](#appendix-known-airports)), its latitude/longitude is filled in automatically. If it isn't recognized, you'll be prompted to enter latitude/longitude manually (or just press Enter to skip). Note that the NWS high/low temperature lookup specifically only has data for US locations — for an international airport, lat/lon still auto-fills correctly, but the NWS temp line just won't appear, since the National Weather Service doesn't cover locations outside the US. Everything else (the METAR/TAF data itself, location-name decoding) works the same regardless of country.
 
-There's no color prompt for weather accounts — METAR and TAF always render in the reserved blue regardless of anything you'd pick, so the app skips asking (see [Color Coding](#color-coding)). The account list on this screen correctly shows `Color: Blue` for these accounts rather than `None`, since blue is always applied even though there was never a prompt for it.
+There's no color prompt for weather accounts — METAR and TAF always render in the reserved blue (see [Color Coding](#color-coding)). The account list on this screen shows `Color: Blue` for these accounts.
 
 Adding a new account saves it immediately, but its data won't appear until the next launch — quit and relaunch swiftCALENDAR to pull in the new feed. See [Sync](#sync) below for why.
 

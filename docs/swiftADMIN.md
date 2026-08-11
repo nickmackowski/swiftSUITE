@@ -48,7 +48,7 @@ pip3 install rich cryptography
 [2]  Build Single App(s)
 
 ── SECURITY ────────────────────────────
-[3]  Change Master Password    ← Coming in v3.0
+[3]  Change Master Password    Use with Caution - Back up Data First
 
 ── DATA ────────────────────────────────
 [4]  Export All Data
@@ -80,7 +80,7 @@ Compiles every Swift app as a universal binary supporting both Apple Silicon (ar
 
 Automatically detects whether an app's source has been moved into its own `source_code/` subfolder (rather than sitting loose at the app root) and builds from there if so — apps can be migrated to this layout one at a time without needing any change here.
 
-`swiftCT` builds differently from the other seven apps — it's a Swift Package Manager project, not a single `.main.swift` file compiled directly via `swiftc`. Build All Apps handles this automatically by running swiftCT's own `build.sh` rather than the standard compile path, producing both a native `.app` bundle and a standalone CLI binary. See [swiftCT's own documentation](swiftCT.md) for details.
+`swiftCT` builds differently from the other seven apps (and it takes longer don't be surprized if it takes ~60 seconds or more) — it's a Swift Package Manager project, not a single `.main.swift` file compiled directly via `swiftc`. Build All Apps handles this automatically by running swiftCT's own `build.sh` rather than the standard compile path, producing both a native `.app` bundle and a standalone CLI binary. See [swiftCT's own documentation](swiftCT.md) for details.
 
 Requires Xcode Command Line Tools (`xcode-select --install`).
 
@@ -94,15 +94,14 @@ Presents a numbered menu of every app. Enter one number for a single app, or mul
 
 ## Change Master Password `[3]`
 
-**Coming in v3.0.**
+**Warning: This feature is currently under development. Data loss is possible/likely. Proceed with caution and ensure you have backups before continuing**
 
-The password change feature is under development. Changing the master password requires re-encrypting all data in swiftNOTES, swiftVAULT, and swiftCONTACTS with a new key. Until full re-encryption is implemented, use the export/import workflow as a workaround:
+The password change feature is under development and while it works you may experience data loss. Changing the master password requires re-encrypting all data in swiftNOTES, swiftVAULT, and swiftCONTACTS with a new key. I have tested it multiple time and while it does work please backup you data prior to changing the password just to be safe.  
 
 1. Export data from each app's Utilities menu
 2. Run change password script
 3. Log in with new password
 4. Re-import data via each app's Utilities menu
-5. Warning: This feature is currently under development. Data loss is possible/likely. Proceed with caution and ensure you have backups before continuing.
 
 ---
 
