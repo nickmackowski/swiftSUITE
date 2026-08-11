@@ -106,6 +106,8 @@ python3 swiftADMIN.py
 
 A successful build also automatically creates a friendly **"Open swiftSUITE (swiftCT).app"** alias right in the swiftSUITE folder — that's the recommended way to actually launch the suite (see First Launch below).
 
+Build time on my M1 MacBook Pro takes approximately 3-4 minutes, please be paitent ;-)
+
 Or build manually:
 
 ```bash
@@ -114,7 +116,6 @@ swiftc -target arm64-apple-macosx14.0 scl.main.swift -o swiftCORE_arm64
 swiftc -target x86_64-apple-macosx14.0 scl.main.swift -o swiftCORE_x86
 lipo -create swiftCORE_arm64 swiftCORE_x86 -output swiftCORE
 ```
-
 Repeat for each app directory. If an app's source has been moved into its own `source_code/` subfolder (see Directory Structure below), adjust the path in the `swiftc` command accordingly — `swiftADMIN` handles this automatically either way.
 
 > **Why two build methods?** The seven core apps above are pure terminal programs — they read/write stdin/stdout directly, with no windows or GUI framework, so a single `.swift` file compiled straight via `swiftc` is genuinely the simplest correct approach. `swiftCT` and its three companion utilities (`swiftEYES`, `swiftCLOCK`, `swiftSYSINFO`) are real native macOS GUI apps — actual windows, buttons, and menus — which fundamentally requires an `.app` bundle (Finder won't treat something as a proper double-clickable application without one) and, for swiftCT specifically, Swift Package Manager, since that's the only way to pull in an external dependency like SwiftTerm at all. This is standard practice in Swift development generally — CLI tools and GUI apps almost always have separate build setups, even within one larger codebase. `swiftADMIN`'s Build All Apps handles both transparently — you never have to think about which one an app needs — auto-detecting SPM projects by the presence of `Package.swift` and running that app's own `build.sh`, which produces both a native `.app` bundle and a standalone CLI binary. Build any of the four manually with `cd <app folder> && ./build.sh`. See [docs/swiftCT.md](docs/swiftCT.md) for swiftCT's own details.
