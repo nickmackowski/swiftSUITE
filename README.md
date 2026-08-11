@@ -106,7 +106,7 @@ python3 swiftADMIN.py
 
 A successful build also automatically creates a friendly **"Open swiftSUITE (swiftCT).app"** alias right in the swiftSUITE folder — that's the recommended way to actually launch the suite (see First Launch below).
 
-Build time on my M1 MacBook Pro takes approximately 3-4 minutes, please be paitent ;-)
+Build time on my M1 MacBook Pro takes approximately 3-4 minutes, please be patient ;-)
 
 Or build manually:
 
