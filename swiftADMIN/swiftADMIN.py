@@ -1,3 +1,9 @@
+# ═══════════════════════════════════════════════════════════════
+# APP: swiftADMIN
+# Suite-wide build/admin console for swiftSUITE
+# File: swiftADMIN.py
+# ═══════════════════════════════════════════════════════════════
+
 #!/usr/bin/env python3
 """
 swiftADMIN.py — swiftSUITE Administrative Toolkit v3.01
@@ -141,6 +147,83 @@ def notify(title: str, message: str):
         pass
 
 
+# swiftSUITE folder icon -- both support files live as hidden files
+# (dot-prefixed) directly alongside swiftADMIN.py itself, rather than in
+# a separate folder. Paths are computed relative to this script's own
+# location, not SUITE_ROOT, so this works correctly regardless of
+# exactly where swiftADMIN.py itself sits within the suite.
+#
+# Applied via a small standalone Swift script (not a full app -- Swift
+# can run directly with `swift script.swift`, no separate build step
+# needed for something this size) that calls NSWorkspace's real
+# setIcon API.
+#
+# Deliberately unconditional rather than trying to detect whether the
+# icon "reverted to default" first -- setting an already-correct icon
+# is harmless, so just always reapplying is simpler and just as
+# effective, without needing to reason about the hidden Icon-file/
+# extended-attribute mechanics macOS uses under the hood.
+SUITE_ICON_PNG    = Path(__file__).resolve().parent / ".icon.png"
+SUITE_ICON_SCRIPT = Path(__file__).resolve().parent / ".set_folder_icon.swift"
+
+def refresh_suite_icon(quiet: bool = False):
+    if not SUITE_ICON_PNG.exists() or not SUITE_ICON_SCRIPT.exists():
+        if not quiet:
+            console.print(
+                f"[yellow]Skipping folder icon refresh — expected both:[/yellow]\n"
+                f"  {SUITE_ICON_PNG}\n  {SUITE_ICON_SCRIPT}"
+            )
+        return False
+    try:
+        proc = subprocess.run(
+            ["swift", str(SUITE_ICON_SCRIPT), str(SUITE_ICON_PNG), str(SUITE_ROOT)],
+            capture_output=True, text=True, timeout=30,
+        )
+        if proc.returncode == 0:
+            if not quiet:
+                console.print("[green]swiftSUITE folder icon refreshed.[/green]")
+            return True
+        else:
+            if not quiet:
+                console.print(f"[red]Folder icon refresh failed:[/red] {proc.stderr.strip() or proc.stdout.strip()}")
+            return False
+    except Exception as e:
+        if not quiet:
+            console.print(f"[red]Folder icon refresh failed:[/red] {e}")
+        return False
+
+
+# A friendly, discoverable entry point at the suite root — a real
+# symlink (not a legacy Finder alias) pointing at swiftCT.app, so a
+# first-time visitor sees something self-explanatory to double-click
+# rather than needing to already know what "swiftCT" is. Tracks cleanly
+# in git as a plain text file, unlike a binary Finder alias.
+#
+# Same philosophy as refresh_suite_icon() -- unconditionally recreated
+# rather than trying to detect whether it's stale or missing first,
+# since removing and relinking is cheap and always correct.
+SUITE_ALIAS_NAME = "Open swiftSUITE (swiftCT).app"
+SUITE_ALIAS_TARGET = SUITE_ROOT / "swiftCT" / "swiftCT.app"
+
+def refresh_suite_alias(quiet: bool = False):
+    if not SUITE_ALIAS_TARGET.exists():
+        if not quiet:
+            console.print(f"[yellow]Skipping alias — swiftCT.app not found at:[/yellow]\n  {SUITE_ALIAS_TARGET}")
+        return False
+    alias_path = SUITE_ROOT / SUITE_ALIAS_NAME
+    try:
+        if alias_path.is_symlink() or alias_path.exists():
+            alias_path.unlink()
+        alias_path.symlink_to(SUITE_ALIAS_TARGET)
+        if not quiet:
+            console.print(f"[green]\"{SUITE_ALIAS_NAME}\" alias refreshed.[/green]")
+        return True
+    except Exception as e:
+        if not quiet:
+            console.print(f"[red]Alias refresh failed:[/red] {e}")
+        return False
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # MAIN MENU
 # ══════════════════════════════════════════════════════════════════════════════
@@ -158,20 +241,24 @@ def main_menu():
         menu.add_row("[1]", "Build All Apps")
         menu.add_row("[2]", "Build Selected App(s)")
         menu.add_row("", "")
+        menu.add_row("", "[bold dim]── TOOLS ───────────────────────────────[/bold dim]")
+        menu.add_row("[5]", "Refresh swiftSUITE Folder Icon")
+        menu.add_row("[6]", "Refresh \"Open swiftSUITE (swiftCT)\" Alias")
+        menu.add_row("", "")
         menu.add_row("", "[bold dim]── SECURITY ────────────────────────────[/bold dim]")
-        menu.add_row("[3]", "Change Master Password  [bold red]Use with Caution - Back up Data First[/bold red]")
+        menu.add_row("[10]", "Change Master Password  [bold red]Use with Caution - Back up Data First[/bold red]")
         menu.add_row("", "")
         menu.add_row("", "[bold dim]── DATA ────────────────────────────────[/bold dim]")
-        menu.add_row("[4]", "Export All Data  [dim](plaintext backup)[/dim]")
-        menu.add_row("[5]", "Import Data")
+        menu.add_row("[13]", "Export All Data  [dim](plaintext backup)[/dim]")
+        menu.add_row("[14]", "Import Data")
         menu.add_row("", "")
         menu.add_row("", "[bold dim]── TTYD WEB TERMINAL ───────────────────[/bold dim]")
-        menu.add_row("[6]", "Start ttyd")
-        menu.add_row("[7]", "ttyd Status")
-        menu.add_row("[8]", "Stop ttyd")
+        menu.add_row("[18]", "Start ttyd")
+        menu.add_row("[19]", "ttyd Status")
+        menu.add_row("[20]", "Stop ttyd")
         menu.add_row("", "")
         menu.add_row("", "[bold dim]── DANGER ZONE ─────────────────────────[/bold dim]")
-        menu.add_row("[9]", "[bold red]Reset to Factory Defaults[/bold red]")
+        menu.add_row("[21]", "[bold red]Reset to Factory Defaults[/bold red]")
         menu.add_row("", "")
         menu.add_row("[Q]", "Quit")
 
@@ -183,19 +270,25 @@ def main_menu():
             build_all()
         elif choice == "2":
             build_single()
-        elif choice == "3":
-            change_password()
-        elif choice == "4":
-            export_all_data()
         elif choice == "5":
-            import_data()
+            refresh_suite_icon()
+            pause()
         elif choice == "6":
+            refresh_suite_alias()
+            pause()
+        elif choice == "10":
+            change_password()
+        elif choice == "13":
+            export_all_data()
+        elif choice == "14":
+            import_data()
+        elif choice == "18":
             ttyd_start()
-        elif choice == "7":
+        elif choice == "19":
             ttyd_status()
-        elif choice == "8":
+        elif choice == "20":
             ttyd_stop()
-        elif choice == "9":
+        elif choice == "21":
             factory_reset()
         elif choice in ("q", "quit", "exit", ""):
             clear()
@@ -257,14 +350,20 @@ def discover_projects():
 
     result = discovered if discovered else FALLBACK_PROJECTS
 
-    # swiftCT is a Swift Package Manager project (Package.swift + Sources/),
-    # not a single .main.swift file like the rest of the suite, so it's not
-    # picked up by the scan above. It's a fixed, always-built part of the
-    # suite -- appended here rather than needing separate discovery logic
-    # or an opt-in build option.
-    swiftct_dir = SUITE_ROOT / "swiftCT"
-    if (swiftct_dir / "Package.swift").exists():
-        result = result + [("swiftCT", "", "swiftCT")]
+    # Any project folder with its own Package.swift (swiftCT, swiftEYES,
+    # swiftCLOCK, swiftSYSINFO, and any future addition) is a Swift
+    # Package Manager project, not a single .main.swift file like the
+    # rest of the suite, so it's not picked up by the scan above. These
+    # get their own build.sh (per-arch build + lipo merge) instead of the
+    # plain swiftc pipeline -- detected generically here rather than
+    # hardcoding each app's name individually.
+    already_found = {name for name, _, _ in result}
+    for entry in sorted(os.listdir(SUITE_ROOT)):
+        entry_path = SUITE_ROOT / entry
+        if not entry_path.is_dir() or entry in already_found:
+            continue
+        if (entry_path / "Package.swift").exists():
+            result = result + [(entry, "", entry)]
 
     return result
 
@@ -329,17 +428,22 @@ def build_one(dir_name: str, source: str, binary: str) -> dict:
         f"Project: {binary} ({dir_name}/{source})",
         "",
     ]
+    is_spm_project = (cwd / "Package.swift").exists()
+
     steps = [
         ["swiftc", "-target", "x86_64-apple-macosx14.0", source, "-o", f"{binary}_x86"],
         ["swiftc", "-target", "arm64-apple-macosx14.0",  source, "-o", f"{binary}_arm64"],
         ["lipo", "-create", f"{binary}_arm64", f"{binary}_x86", "-output", binary],
     ]
 
-    if dir_name == "swiftCT":
-        # swiftCT is a Swift Package Manager project with its own build.sh
-        # that handles the per-architecture build, lipo merge, app bundle
-        # assembly, icon, and code signing -- run that directly rather than
-        # duplicating that logic here.
+    if is_spm_project:
+        # Swift Package Manager projects (swiftCT, swiftEYES, swiftCLOCK,
+        # swiftSYSINFO, and any future addition) each carry their own
+        # build.sh handling the per-architecture build, lipo merge, app
+        # bundle assembly, icon, and code signing -- run that directly
+        # rather than duplicating that logic here. Detected generically
+        # by the presence of Package.swift, not by hardcoding each app's
+        # name individually.
         steps = [["bash", "build.sh"]]
 
     try:
@@ -352,7 +456,7 @@ def build_one(dir_name: str, source: str, binary: str) -> dict:
                 result["warnings"] += proc.stderr.lower().count("warning:")
             log_lines.append("")
         result["ok"] = True
-        if dir_name != "swiftCT":
+        if not is_spm_project:
             for tmp in (f"{binary}_x86", f"{binary}_arm64"):
                 tmp_path = cwd / tmp
                 if tmp_path.exists():
@@ -452,6 +556,8 @@ def run_build(projects):
         notify("swiftADMIN", f"{len(failed)} build(s) failed ({elapsed}s)")
     else:
         notify("swiftADMIN", f"All {len(projects)} app(s) built ({elapsed}s)")
+        refresh_suite_icon()
+        refresh_suite_alias()
 
     pause()
 
