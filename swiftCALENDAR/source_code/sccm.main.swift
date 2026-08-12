@@ -507,7 +507,7 @@ class CalendarManager {
                                                   // Lighter sky-blue (256-color) rather than standard ANSI
                                                   // blue (1;34m) — the old shade was hard to read against a
                                                   // black terminal background.
-        let birthdayPurple = "\u{001B}[38;5;135m"  // same — shared between grid and agenda, birthday overlay
+        let birthdayPurple = "\u{001B}[1;38;5;135m"  // same — shared between grid and agenda, birthday overlay
         let dueYellow = "\u{001B}[1;33m"  // same — shared between grid and agenda, due-date overlay
 
         func calCell(day: Int, eventColor: String) -> String {
@@ -1392,7 +1392,7 @@ class CalendarManager {
                     guard let eventDate = calendar.date(from: comps) else { continue }
                     
                     var event = CalendarEvent()
-                    event.title = "🎂 \(fullName)'s Birthday"
+                    event.title = "\(fullName)'s Birthday"
                     event.startTime = eventDate
                     event.endTime = eventDate
                     event.isAllDay = true
