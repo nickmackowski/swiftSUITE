@@ -4,8 +4,7 @@ A personal productivity suite built entirely in Swift for macOS terminals. Seven
 
 Beta Notice: This software is currently in development. While it is functional, you may encounter bugs, glitches, unexpected behavior, or incomplete features. If the application becomes unresponsive or behaves unexpectedly, pressing Ctrl+Z and restarting swiftCORE may be enough to zap "the ghost in the machine." Please use this software with caution, report any issues you encounter, and always keep backups of your data.  Thanks and enjoy ;-)
 
-<img width="2314" height="1688" alt="image" src="https://github.com/user-attachments/assets/f57ff977-f6b1-41da-9a9e-7193156111a6" />
-
+<img width="1280" height="640" alt="image" src="https://github.com/user-attachments/assets/505aace3-8501-4f1c-9d91-6eeb370cae70" />
 
 ## The Story Behind This Project
 
