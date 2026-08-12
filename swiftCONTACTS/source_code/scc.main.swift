@@ -1162,7 +1162,6 @@ class ContactsManager {
                     returnToLauncher()
                     return
                 }
-            default: break
             }
         }
     }
