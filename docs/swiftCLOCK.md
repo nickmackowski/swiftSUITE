@@ -8,6 +8,8 @@ A flat, minimal analog clock companion app, available in two versions — a clea
 
 The original design — a flat, minimal analog face in the style of GtkClock: dot hour/minute markers (bold dots at each hour), a short thick hour hand, a long thin minute hand, a red second hand, and the date shown as plain text.
 
+<img width="266" height="267" alt="image" src="https://github.com/user-attachments/assets/6b79e5ba-9bc3-43b0-b447-02450afb162b" />
+
 ---
 
 ## swiftCLOCKv2
