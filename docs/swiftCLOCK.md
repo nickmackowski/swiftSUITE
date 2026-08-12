@@ -8,7 +8,7 @@ A flat, minimal analog clock companion app, available in two versions — a clea
 
 The original design — a flat, minimal analog face in the style of Xclock: dot hour/minute markers (bold dots at each hour), a short thick hour hand, a long thin minute hand, a red second hand, and the date shown as plain text.
 
-
+<img width="372" height="374" alt="image" src="https://github.com/user-attachments/assets/1ef97e3b-0019-4677-84ee-155e48c724d8" />
 
 ---
 
