@@ -61,7 +61,7 @@ Detailed setup and usage guides for each app:
 - **Web accessible** — serve the full suite in any browser via ttyd + Tailscale
 - **Native local launcher** — swiftCT drops you straight into swiftCORE with a native macOS app, no browser or ttyd required; double-click for a GUI window, or run it directly from a shell
 - **Companion utilities** — swiftEYES, swiftCLOCK, and swiftSYSINFO extend swiftCT with quick-access desktop tools, launchable from its Utilities menu; swiftCLOCKv2 adds live cursor-tracking eyes and Day-Date-style complications to its watch face, and swiftSYSINFO surfaces VPN/Tailscale/Syncthing status alongside live CPU/memory/disk telemetry
-- **Aviation weather** — one combined setup in swiftCALENDAR creates both a live METAR (current conditions) and TAF (forecast) account from a single airport code, with the real airport name and city decoded in the detail view
+- **Aviation weather** — METAR (current conditions) and TAF (forecast) account from a single airport code, with the real airport name and city decoded in the detail view
 - **ICS calendar sync** — supports any CalDAV/ICS feed (iCloud, Outlook, Google Calendar)
 - **Calendar overlays** — birthdays (from swiftCONTACTS) and due-date reminders (from swiftNOTES) appear automatically on swiftCALENDAR's month view, computed live on every launch — nothing is duplicated or stored twice
 - **Remote capture** — email or text a note (or a real calendar event) to a dedicated inbox from anywhere, and it shows up automatically the next time swiftNOTES or swiftCALENDAR opens; swiftNOTES supports more than one capture inbox at once
