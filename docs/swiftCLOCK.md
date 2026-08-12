@@ -6,7 +6,7 @@ A flat, minimal analog clock companion app, available in two versions — a clea
 
 ## swiftCLOCKv1
 
-The original design — a flat, minimal analog face in the style of GtkClock: dot hour/minute markers (bold dots at each hour), a short thick hour hand, a long thin minute hand, a red second hand, and the date shown as plain text.
+The original design — a flat, minimal analog face in the style of Xclock: dot hour/minute markers (bold dots at each hour), a short thick hour hand, a long thin minute hand, a red second hand, and the date shown as plain text.
 
 <img width="266" height="267" alt="image" src="https://github.com/user-attachments/assets/6b79e5ba-9bc3-43b0-b447-02450afb162b" />
 
@@ -21,6 +21,8 @@ Builds on v1 with three additions inspired by real watch dial conventions — ea
 - **24-hour digital readout at 9 o'clock** — plain digital time display alongside the analog hands
 
 Hands are colored blue (hour), green (minute), and red (second), rendered as thick rounded-cap pills rather than thin lines. Hands render on top of the eyes and complications, so the periodic sweep of the hour hand through 6 o'clock (and the minute/hour hands through 3 and 9 at various points) is expected — the same way a real watch's hands pass over its own complications during normal operation.
+
+<img width="532" height="534" alt="image" src="https://github.com/user-attachments/assets/bda675f4-236b-48b5-8658-39ec726701f4" />
 
 ---
 
