@@ -2,6 +2,8 @@
 
 A classic xeyes-style companion app — a small floating pair of eyes that tracks your cursor wherever it goes on screen.
 
+<img width="440" height="222" alt="image" src="https://github.com/user-attachments/assets/d72bee94-8aab-410d-aa3d-113dc9fb0295" />
+
 ---
 
 ## Features
