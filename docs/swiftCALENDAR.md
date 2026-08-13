@@ -83,7 +83,7 @@ If the airport is in the pre-seeded `known_airports.json` list (over 400 airport
 
 There's no color prompt for weather accounts — METAR and TAF always render in the reserved blue (see [Color Coding](#color-coding)). The account list on this screen shows `Color: Blue` for these accounts.
 
-Adding a new account saves it immediately, but its data won't appear until the next launch — quit and relaunch swiftCALENDAR to pull in the new feed. See [Sync](#sync) below for why.
+Adding a new account saves it immediately, but its data won't appear until the next launch — quit and relaunch swiftCALENDAR to pull in the new feed. The easiest way to do this is just pop over to another app and come back to calendar.  See [Sync](#sync) below for why.
 
 Deleting a METAR account prompts a follow-up: whether to also delete that station's historical data. METAR observations persist in a separate file that survives across syncs (unlike regular calendar data, which fully refreshes each time) — say yes to also clear out that station's history, or no to keep it around for reference. TAF data doesn't need this same prompt; it's already covered by the regular per-launch refresh.
 
