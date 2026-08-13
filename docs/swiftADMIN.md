@@ -4,8 +4,6 @@ swiftADMIN is a Python-based administrative toolkit for the swiftSUITE. It handl
 
 <img width="1978" height="1312" alt="image" src="https://github.com/user-attachments/assets/19b0274b-4693-4b39-b4c7-d4e011086120" />
 
-
-
 ---
 
 ## What It Does
