@@ -150,7 +150,7 @@ Press `ENTER` on any day with events, then select an event by number to open the
 
 swiftCALENDAR reads `birthdayMonthDay` directly out of swiftCONTACTS' `contacts.json` and computes recurring all-day birthday events live — every launch, for a window of roughly three years back and three years forward. Nothing is ever written back to `contacts.json`, and no birthday data is stored anywhere inside swiftCALENDAR itself.
 
-Birthdays always render in **purple**, both in the month grid and the agenda, and the event title is formatted as `🎂 [Name]'s Birthday`.
+Birthdays always render in **purple**, both in the month grid and the agenda, and the event title is formatted as `[Name]'s Birthday`.
 
 ---
 
