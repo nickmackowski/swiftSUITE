@@ -1392,7 +1392,7 @@ class CalendarManager {
                     guard let eventDate = calendar.date(from: comps) else { continue }
                     
                     var event = CalendarEvent()
-                    event.title = "\(fullName)'s Birthday"
+                    event.title = "It's '\(fullName)'s Birthday"
                     event.startTime = eventDate
                     event.endTime = eventDate
                     event.isAllDay = true
