@@ -1,10 +1,9 @@
 # swiftSUITE
 
-A personal productivity suite built entirely in Swift for macOS terminals. Seven compiled command-line apps sharing a unified login, consistent visual design, and keyboard navigation — accessible locally or from any browser on your network via [ttyd](https://github.com/tsl0922/ttyd) and Tailscale, or through swiftCT, a native local launcher (see below). 
+A personal productivity suite built entirely in Swift for macOS terminals. Seven compiled command-line apps sharing a unified login, consistent visual design, and keyboard navigation — accessible locally or from any browser on your network via [ttyd](https://github.com/tsl0922/ttyd) and Tailscale, or through swiftCT, a native local launcher (see below). Beta Notice: This software is currently in development. While it is functional, you may encounter bugs, glitches, unexpected behavior, or incomplete features. If the application becomes unresponsive or behaves unexpectedly, pressing Ctrl+Z and restarting swiftCORE may be enough to zap "the ghost in the machine." Please use this software with caution, report any issues you encounter, and always keep backups of your data.  Thanks and enjoy ;-)
 
-Beta Notice: This software is currently in development. While it is functional, you may encounter bugs, glitches, unexpected behavior, or incomplete features. If the application becomes unresponsive or behaves unexpectedly, pressing Ctrl+Z and restarting swiftCORE may be enough to zap "the ghost in the machine." Please use this software with caution, report any issues you encounter, and always keep backups of your data.  Thanks and enjoy ;-)
+<img width="2314" height="1688" alt="image" src="https://github.com/user-attachments/assets/f57ff977-f6b1-41da-9a9e-7193156111a6" />
 
-<img width="1280" height="640" alt="image" src="https://github.com/user-attachments/assets/505aace3-8501-4f1c-9d91-6eeb370cae70" />
 
 ## The Story Behind This Project
 
@@ -29,7 +28,7 @@ Fun Fact: Claude AI even helped write this README and most of the supporting doc
 | swiftMAIL | `swiftMAIL` | IMAP/SMTP email client |
 | swiftCT | `swiftCT` | Terminal Launcher for swiftCORE |
 
-`swiftADMIN` is a companion tool — a Python toolkit (not a compiled Swift binary) for building, ttyd management, and factory reset.
+`swiftADMIN` is a companion tool — a Python toolkit (not a compiled Swift binary) for building, ttyd management, and factory reset. `swiftCT` is a ninth companion tool — a native macOS terminal launcher for swiftCORE, no browser required. See their own sections further down.
 
 ---
 
@@ -61,7 +60,7 @@ Detailed setup and usage guides for each app:
 - **Web accessible** — serve the full suite in any browser via ttyd + Tailscale
 - **Native local launcher** — swiftCT drops you straight into swiftCORE with a native macOS app, no browser or ttyd required; double-click for a GUI window, or run it directly from a shell
 - **Companion utilities** — swiftEYES, swiftCLOCK, and swiftSYSINFO extend swiftCT with quick-access desktop tools, launchable from its Utilities menu; swiftCLOCKv2 adds live cursor-tracking eyes and Day-Date-style complications to its watch face, and swiftSYSINFO surfaces VPN/Tailscale/Syncthing status alongside live CPU/memory/disk telemetry
-- **Aviation weather** — METAR (current conditions) and TAF (forecast) account from a single airport code, with the real airport name and city decoded in the detail view
+- **Aviation weather** — one combined setup in swiftCALENDAR creates both a live METAR (current conditions) and TAF (forecast) account from a single airport code, with the real airport name and city decoded in the detail view
 - **ICS calendar sync** — supports any CalDAV/ICS feed (iCloud, Outlook, Google Calendar)
 - **Calendar overlays** — birthdays (from swiftCONTACTS) and due-date reminders (from swiftNOTES) appear automatically on swiftCALENDAR's month view, computed live on every launch — nothing is duplicated or stored twice
 - **Remote capture** — email or text a note (or a real calendar event) to a dedicated inbox from anywhere, and it shows up automatically the next time swiftNOTES or swiftCALENDAR opens; swiftNOTES supports more than one capture inbox at once
@@ -97,6 +96,10 @@ cd swiftSUITE
 
 ### 2. Build all apps
 
+The easiest way in: double-click **`Start Here (swiftADMIN).command`** right in the swiftSUITE folder — it opens Terminal and launches swiftADMIN for you, no manual commands needed.
+
+Or from a shell:
+
 ```bash
 cd swiftADMIN
 python3 swiftADMIN.py
@@ -115,6 +118,7 @@ swiftc -target arm64-apple-macosx14.0 scl.main.swift -o swiftCORE_arm64
 swiftc -target x86_64-apple-macosx14.0 scl.main.swift -o swiftCORE_x86
 lipo -create swiftCORE_arm64 swiftCORE_x86 -output swiftCORE
 ```
+
 Repeat for each app directory. If an app's source has been moved into its own `source_code/` subfolder (see Directory Structure below), adjust the path in the `swiftc` command accordingly — `swiftADMIN` handles this automatically either way.
 
 > **Why two build methods?** The seven core apps above are pure terminal programs — they read/write stdin/stdout directly, with no windows or GUI framework, so a single `.swift` file compiled straight via `swiftc` is genuinely the simplest correct approach. `swiftCT` and its three companion utilities (`swiftEYES`, `swiftCLOCK`, `swiftSYSINFO`) are real native macOS GUI apps — actual windows, buttons, and menus — which fundamentally requires an `.app` bundle (Finder won't treat something as a proper double-clickable application without one) and, for swiftCT specifically, Swift Package Manager, since that's the only way to pull in an external dependency like SwiftTerm at all. This is standard practice in Swift development generally — CLI tools and GUI apps almost always have separate build setups, even within one larger codebase. `swiftADMIN`'s Build All Apps handles both transparently — you never have to think about which one an app needs — auto-detecting SPM projects by the presence of `Package.swift` and running that app's own `build.sh`, which produces both a native `.app` bundle and a standalone CLI binary. Build any of the four manually with `cd <app folder> && ./build.sh`. See [docs/swiftCT.md](docs/swiftCT.md) for swiftCT's own details.
@@ -247,12 +251,14 @@ swiftSUITE/
 │   ├── logs/
 │   └── source_code/
 │       └── scv.main.swift
+├── Open swiftSUITE (swiftCT).app   # auto-created after Build All Apps — the recommended way in
+├── Start Here (swiftADMIN).command # double-click to launch swiftADMIN without touching Terminal
 ├── README.md
 ├── LICENSE
 └── .gitignore
 ```
 
-`swiftADMIN` automatically detects whether an app's source lives in `source_code/` or loose at the app root, and builds from whichever it finds.
+`swiftADMIN` automatically detects whether an app's source lives in `source_code/` or loose at the app root, and builds from whichever it finds — apps don't all need to be migrated to this layout at once.
 
 ---
 
