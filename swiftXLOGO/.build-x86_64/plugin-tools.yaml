@@ -1,0 +1,66 @@
+client:
+  name: basic
+  file-system: device-agnostic
+tools: {}
+targets:
+  "PackageStructure": ["<PackageStructure>"]
+  "main": ["<swiftXLOGO-x86_64-apple-macosx-release.exe>","<swiftXLOGO-x86_64-apple-macosx-release.module>"]
+  "swiftXLOGO-x86_64-apple-macosx-release.exe": ["<swiftXLOGO-x86_64-apple-macosx-release.exe>"]
+  "swiftXLOGO-x86_64-apple-macosx-release.module": ["<swiftXLOGO-x86_64-apple-macosx-release.module>"]
+  "test": ["<swiftXLOGO-x86_64-apple-macosx-release.exe>","<swiftXLOGO-x86_64-apple-macosx-release.module>"]
+default: "main"
+nodes:
+  "/Users/jzmfcz/Desktop/swiftXLOGO/Sources/swiftXLOGO/":
+    is-directory-structure: true
+    content-exclusion-patterns: [".git",".build"]
+commands:
+  "/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt":
+    tool: write-auxiliary-file
+    inputs: ["<swift-get-version>","/Library/Developer/CommandLineTools/usr/bin/swiftc"]
+    outputs: ["/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt"]
+    always-out-of-date: "true"
+    description: "Write auxiliary file /Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt"
+
+  "/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.build/sources":
+    tool: write-auxiliary-file
+    inputs: ["<sources-file-list>","/Users/jzmfcz/Desktop/swiftXLOGO/Sources/swiftXLOGO/main.swift"]
+    outputs: ["/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.build/sources"]
+    description: "Write auxiliary file /Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.build/sources"
+
+  "/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.product/Objects.LinkFileList":
+    tool: write-auxiliary-file
+    inputs: ["<link-file-list>","/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.build/main.swift.o"]
+    outputs: ["/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.product/Objects.LinkFileList"]
+    description: "Write auxiliary file /Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.product/Objects.LinkFileList"
+
+  "<swiftXLOGO-x86_64-apple-macosx-release.exe>":
+    tool: phony
+    inputs: ["/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO"]
+    outputs: ["<swiftXLOGO-x86_64-apple-macosx-release.exe>"]
+
+  "<swiftXLOGO-x86_64-apple-macosx-release.module>":
+    tool: phony
+    inputs: ["/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.build/main.swift.o","/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/Modules/swiftXLOGO.swiftmodule"]
+    outputs: ["<swiftXLOGO-x86_64-apple-macosx-release.module>"]
+
+  "C.swiftXLOGO-x86_64-apple-macosx-release.exe":
+    tool: shell
+    inputs: ["/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.build/main.swift.o","/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.product/Objects.LinkFileList"]
+    outputs: ["/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO"]
+    description: "Linking ./.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-L","/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release","-o","/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO","-module-name","swiftXLOGO","-Xlinker","-no_warn_duplicate_libraries","-emit-executable","-Xlinker","-dead_strip","-Xlinker","-alias","-Xlinker","_swiftXLOGO_main","-Xlinker","_main","-Xlinker","-rpath","-Xlinker","@loader_path","@/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.product/Objects.LinkFileList","-Xlinker","-rpath","-Xlinker","/Library/Developer/CommandLineTools/usr/lib/swift-6.2/macosx","-target","x86_64-apple-macosx14.0","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g"]
+
+  "C.swiftXLOGO-x86_64-apple-macosx-release.module":
+    tool: shell
+    inputs: ["/Users/jzmfcz/Desktop/swiftXLOGO/Sources/swiftXLOGO/main.swift","/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swift-version--1AB21518FC5DEDBE.txt","/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.build/sources"]
+    outputs: ["/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.build/main.swift.o","/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/Modules/swiftXLOGO.swiftmodule"]
+    description: "Compiling Swift Module 'swiftXLOGO' (1 sources)"
+    args: ["/Library/Developer/CommandLineTools/usr/bin/swiftc","-module-name","swiftXLOGO","-emit-dependencies","-emit-module","-emit-module-path","/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/Modules/swiftXLOGO.swiftmodule","-output-file-map","/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.build/output-file-map.json","-whole-module-optimization","-num-threads","10","-c","@/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/swiftXLOGO.build/sources","-I","/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/Modules","-target","x86_64-apple-macosx14.0","-whole-module-optimization","-num-threads","10","-serialize-diagnostics","-O","-j10","-DSWIFT_PACKAGE","-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE","-module-cache-path","/Users/jzmfcz/Desktop/swiftXLOGO/.build-x86_64/x86_64-apple-macosx/release/ModuleCache","-parseable-output","-Xfrontend","-entry-point-function-name","-Xfrontend","swiftXLOGO_main","-color-diagnostics","-swift-version","5","-I","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-L","/Library/Developer/CommandLineTools/Library/Developer/Frameworks","-plugin-path","/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing","-sdk","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-g","-Xcc","-isysroot","-Xcc","/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk","-Xcc","-fPIC","-Xcc","-g","-package-name","swiftxlogo"]
+
+  "PackageStructure":
+    tool: package-structure-tool
+    inputs: ["/Users/jzmfcz/Desktop/swiftXLOGO/Sources/swiftXLOGO/","/Users/jzmfcz/Desktop/swiftXLOGO/Package.swift","/Users/jzmfcz/Desktop/swiftXLOGO/Package.resolved"]
+    outputs: ["<PackageStructure>"]
+    description: "Planning build"
+    allow-missing-inputs: true
+

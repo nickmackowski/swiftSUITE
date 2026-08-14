@@ -1,0 +1,29 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/jzmfcz/Desktop/swiftXLOGO/.build-arm64/arm64-apple-macosx/release/swiftXLOGO'
+relocations:
+  - { offset: 0xEE944, size: 0x8, addend: 0x0, symName: _swiftXLOGO_main, symObjAddr: 0x0, symBinAddr: 0x100001220, symSize: 0x68 }
+  - { offset: 0xEE978, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO11AppDelegateCMa', symObjAddr: 0x68, symBinAddr: 0x100001288, symSize: 0x20 }
+  - { offset: 0xEEACC, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO8LogoViewCfETo', symObjAddr: 0x34C, symBinAddr: 0x10000156C, symSize: 0x48 }
+  - { offset: 0xEEAFB, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO8LogoViewCMa', symObjAddr: 0x394, symBinAddr: 0x1000015B4, symSize: 0x20 }
+  - { offset: 0xEEB0F, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO11AppDelegateCfETo', symObjAddr: 0xA54, symBinAddr: 0x100001C74, symSize: 0x38 }
+  - { offset: 0xEEB3E, size: 0x8, addend: 0x0, symName: ___swift_memcpy16_8, symObjAddr: 0xA8C, symBinAddr: 0x100001CAC, symSize: 0xC }
+  - { offset: 0xEEB52, size: 0x8, addend: 0x0, symName: ___swift_noop_void_return, symObjAddr: 0xA98, symBinAddr: 0x100001CB8, symSize: 0x4 }
+  - { offset: 0xEEB66, size: 0x8, addend: 0x0, symName: '_$sSo6CGSizeVwet', symObjAddr: 0xA9C, symBinAddr: 0x100001CBC, symSize: 0x20 }
+  - { offset: 0xEEB7A, size: 0x8, addend: 0x0, symName: '_$sSo6CGSizeVwst', symObjAddr: 0xABC, symBinAddr: 0x100001CDC, symSize: 0x28 }
+  - { offset: 0xEEB8E, size: 0x8, addend: 0x0, symName: '_$sSo6CGSizeVMa', symObjAddr: 0xAE4, symBinAddr: 0x100001D04, symSize: 0x50 }
+  - { offset: 0xEEBC7, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO8LogoViewC4drawyySo6CGRectVFTo', symObjAddr: 0x88, symBinAddr: 0x1000012A8, symSize: 0x28 }
+  - { offset: 0xEEE02, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO8LogoViewC5frameACSo6CGRectV_tcfcTo', symObjAddr: 0xB0, symBinAddr: 0x1000012D0, symSize: 0x138 }
+  - { offset: 0xEEF19, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO8LogoViewC5coderACSgSo7NSCoderC_tcfc', symObjAddr: 0x1E8, symBinAddr: 0x100001408, symSize: 0x130 }
+  - { offset: 0xEEF76, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO8LogoViewC5coderACSgSo7NSCoderC_tcfcTo', symObjAddr: 0x318, symBinAddr: 0x100001538, symSize: 0x28 }
+  - { offset: 0xEF08B, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO11AppDelegateC29applicationDidFinishLaunchingyy10Foundation12NotificationVF', symObjAddr: 0x3B4, symBinAddr: 0x1000015D4, symSize: 0x380 }
+  - { offset: 0xEF374, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO11AppDelegateC29applicationDidFinishLaunchingyy10Foundation12NotificationVFTo', symObjAddr: 0x734, symBinAddr: 0x100001954, symSize: 0xA0 }
+  - { offset: 0xEF39C, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO11AppDelegateC8growLogoyyFTo', symObjAddr: 0x7D4, symBinAddr: 0x1000019F4, symSize: 0x2C }
+  - { offset: 0xEF3DA, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO11AppDelegateC10shrinkLogoyyFTo', symObjAddr: 0x800, symBinAddr: 0x100001A20, symSize: 0x2C }
+  - { offset: 0xEF426, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO11AppDelegateC12resizeWindow33_D9C4893125FED36FA6C0A219BC2748BFLL7byDeltay12CoreGraphics7CGFloatV_tF', symObjAddr: 0x82C, symBinAddr: 0x100001A4C, symSize: 0x168 }
+  - { offset: 0xEF61C, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO11AppDelegateC47applicationShouldTerminateAfterLastWindowClosedySbSo13NSApplicationCFTo', symObjAddr: 0x994, symBinAddr: 0x100001BB4, symSize: 0x8 }
+  - { offset: 0xEF644, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO11AppDelegateCACycfcTo', symObjAddr: 0x99C, symBinAddr: 0x100001BBC, symSize: 0x7C }
+  - { offset: 0xEF820, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO8LogoViewC4drawyySo6CGRectVFTf4dn_n', symObjAddr: 0xB34, symBinAddr: 0x100001D54, symSize: 0x3D0 }
+  - { offset: 0xEFC63, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO11AppDelegateC13setUpMainMenuyyFTf4d_n', symObjAddr: 0xF04, symBinAddr: 0x100002124, symSize: 0x26C }
+  - { offset: 0xEFDD6, size: 0x8, addend: 0x0, symName: '_$s10swiftXLOGO11AppDelegateC16buildContextMenuSo6NSMenuCyFTf4d_n', symObjAddr: 0x1170, symBinAddr: 0x100002390, symSize: 0x1A0 }
+...
