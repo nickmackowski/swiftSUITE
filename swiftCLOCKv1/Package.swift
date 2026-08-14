@@ -2,13 +2,13 @@
 import PackageDescription
 
 let package = Package(
-    name: "swiftCLOCK",
+    name: "swiftCLOCKv1",
     platforms: [
         .macOS(.v12)
     ],
     targets: [
         .executableTarget(
-            name: "swiftCLOCK"
+            name: "swiftCLOCKv1"
         )
     ]
 )
