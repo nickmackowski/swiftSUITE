@@ -35,6 +35,8 @@ lipo -create "$ARM64_BIN" "$X86_BIN" -output "$BUNDLE/Contents/MacOS/$APP_NAME"
 # lipo doesn't reliably preserve the execute bit on its output -- without
 # this, macOS refuses to launch the bundle at all.
 chmod +x "$BUNDLE/Contents/MacOS/$APP_NAME"
+cp "$BUNDLE/Contents/MacOS/$APP_NAME" "./$APP_NAME"
+chmod +x "./$APP_NAME"
 
 cp Info.plist "$BUNDLE/Contents/Info.plist"
 

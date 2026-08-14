@@ -1,9 +1,9 @@
 #!/bin/bash
 set -e
 
-APP_NAME="swiftCLOCK"
+APP_NAME="swiftCLOCKv1"
 BUNDLE="${APP_NAME}.app"
-BIN_NAME="swiftCLOCK"
+BIN_NAME="swiftCLOCKv1"
 
 # Always start from clean scratch directories. Swift's module cache bakes
 # in the absolute filesystem path at compile time -- if these folders ever
