@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>swiftCLOCKv2</string>
+    <string>swiftCLOCK</string>
     <key>CFBundleDisplayName</key>
     <string>swiftCLOCK</string>
     <key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
-    <string>swiftCLOCK</string>
+    <string>swiftCLOCKv2</string>
     <key>CFBundleIconFile</key>
     <string>swiftCLOCKv2</string>
     <key>LSMinimumSystemVersion</key>
