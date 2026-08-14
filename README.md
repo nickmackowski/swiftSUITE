@@ -1,13 +1,11 @@
 # swiftSUITE
 A personal productivity suite built entirely in Swift for macOS terminals. Seven compiled command-line apps sharing a unified login, consistent visual design, and keyboard navigation — accessible locally or from any browser on your network via [ttyd](https://github.com/tsl0922/ttyd) and Tailscale, or through swiftCT, a native local launcher (see below). Beta Notice: This software is currently in development. While it is functional, you may encounter bugs, glitches, unexpected behavior, or incomplete features. If the application becomes unresponsive or behaves unexpectedly, pressing Ctrl+Z and restarting swiftCORE may be enough to zap "the ghost in the machine." Please use this software with caution, report any issues you encounter, and always keep backups of your data.  Thanks and enjoy ;-)
-
 <img width="2314" height="1688" alt="image" src="https://github.com/user-attachments/assets/f57ff977-f6b1-41da-9a9e-7193156111a6" />
-
 ## The Story Behind This Project
-
 Version 1.0 of swiftSUITE was developed with the assistance of Google Gemini. Version 2.0 was significantly refined, expanded, and rebuilt with the assistance of Anthropic Claude. Version 3.0 brought a coordinated, suite-wide release across every app at once — consistent header styling, directory layout, and log handling everywhere, plus real new features in swiftNOTES and swiftCALENDAR. The `c` suffix on every version number is a small nod to that collaboration. Version numbers are derived from the date of the most recent compile. If you modify the source code, please preserve the existing versioning convention: `major.minor.MM.DDc`, where MM is the month and DD is the day of the release. As of v3.0, every app in the suite — including swiftCALENDAR, which had drifted ahead of the others under the old v2.x numbering — shares the same `v3.01.MM.DDc` scheme.
 I am not a professional programmer or software developer. This project is a demonstration of what becomes possible when a idea and AI-assistance development come together. If you have an idea for a personal tool and think you lack the technical background to build it — this project is proof that you might be wrong. 
 Fun Fact: Claude AI even helped write this README and most of the supporting documentation ;-) Like the rest of the project, it's not perfect—but hopefully it's useful. If you spot anything that needs improvement, feel free to update it.  Thanks and have a great day!
+
 ---
 ## Apps
 | App | Binary | Description |
@@ -21,6 +19,7 @@ Fun Fact: Claude AI even helped write this README and most of the supporting doc
 | swiftMAIL | `swiftMAIL` | IMAP/SMTP email client |
 | swiftCT | `swiftCT` | Terminal Launcher for swiftCORE |
 `swiftADMIN` is a companion tool — a Python toolkit (not a compiled Swift binary) for building, ttyd management, and factory reset. `swiftCT` is a ninth companion tool — a native macOS terminal launcher for swiftCORE, no browser required. See their own sections further down.
+
 ---
 ## Documentation
 Detailed setup and usage guides for each app:
@@ -37,6 +36,7 @@ Detailed setup and usage guides for each app:
 - [swiftCLOCK](docs/swiftCLOCK.md)
 - [swiftSYSINFO](docs/swiftSYSINFO.md)
 - [swiftXLOGO](docs/swiftXLOGO.md)
+
 ---
 ## Features
 - **Unified auth** — log in once via swiftCORE; Notes, Vault, and Contacts unlock automatically for 30 minutes
@@ -52,6 +52,7 @@ Detailed setup and usage guides for each app:
 - **Remote capture** — email or text a note (or a real calendar event) to a dedicated inbox from anywhere, and it shows up automatically the next time swiftNOTES or swiftCALENDAR opens; swiftNOTES supports more than one capture inbox at once
 - **15-minute auto-sync** — swiftMAIL polls in the background without requiring manual refresh
 - **swiftADMIN** — Python toolkit for building, ttyd management, and factory reset
+
 ---
 ## Requirements
 - macOS 14 (Sonoma) or later
@@ -65,6 +66,7 @@ Detailed setup and usage guides for each app:
   pip3 install rich cryptography
   ```
 - Homebrew (optional, required for ttyd — see Web Access section below)
+
 ---
 ## Installation
 ### 1. Clone the repository
@@ -110,6 +112,7 @@ cd swiftCORE
 On first run, swiftCORE prompts you to create a username and password. This password encrypts your Notes, Vault, and Contacts data.
 <img width="2314" height="1688" alt="image" src="https://github.com/user-attachments/assets/f07241c1-f696-4a40-98a7-f26df76b2b79" />
 See [swiftCT's documentation](docs/swiftCT.md) for its full feature set — themes, SSH remote sessions, and the Utilities menu for launching companion apps.
+
 ---
 ## Directory Structure
 Each app's folder keeps its compiled binary and data files loose at the top level — this is deliberate, since the app resolves its own data directory relative to wherever the binary itself lives. Source code and logs are kept in their own subfolders alongside it:
@@ -221,6 +224,7 @@ swiftSUITE/
 └── .gitignore
 ```
 `swiftADMIN` automatically detects whether an app's source lives in `source_code/` or loose at the app root, and builds from whichever it finds — apps don't all need to be migrated to this layout at once.
+
 ---
 ## Web Access via ttyd
 > **On the Mac itself?** You probably don't need this section — `swiftCT` (see below) gives you a native app that launches straight into swiftCORE, no browser or ttyd required. ttyd is for reaching the suite from *other* devices — your phone, iPad, or someone else's computer — over your own private network (e.g. [Tailscale](https://tailscale.com)).
@@ -236,13 +240,16 @@ ttyd -p 7681 --writable ./swiftCORE/swiftCORE
 ```
 Then open `http://<your-private-network-ip>:7681` in any browser on that network.
 > **Security warning:** Never expose the ttyd port to the public internet. Always use Tailscale or another VPN. The `--writable` flag gives full terminal access to whoever connects.
+
 ---
 ## swiftADMIN
 `swiftADMIN/swiftADMIN.py` is the administrative toolkit for the suite. It handles building all apps as universal binaries, managing the ttyd web terminal server, exporting data, and resetting the suite to factory defaults. See the [swiftADMIN documentation](docs/swiftADMIN.md) for full details.
+
 ---
 ## swiftCT
 `swiftCT` is a native macOS terminal launcher for swiftCORE. Its primary mode is fully local — no browser, no ttyd, no network — spawning swiftCORE as a direct local process. Double-click `swiftCT.app` for a native GUI window with an embedded terminal, or run `./swiftCT` directly from a shell for a zero-frills passthrough straight into swiftCORE. It also includes two optional convenience extras — launching an external Terminal.app window, and connecting to a remote machine over SSH — for anyone who wants them; neither is required or used for normal swiftSUITE operation. See [swiftCT's own README](docs/swiftCT.md) for the full story, including why SSH isn't the primary access method here (short version: Syncthing keeping each machine's data in sync directly turned out to be simpler than one central machine reached over SSH).
 It's self-locating: swiftCT finds `swiftCORE` relative to its own position on disk, so the whole `swiftSUITE` folder can be moved, renamed, or copied anywhere and swiftCT still finds its neighbor correctly. It's built on [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) (MIT License — see [swiftCT/THIRD-PARTY-LICENSES.md](swiftCT/THIRD-PARTY-LICENSES.md)), and builds automatically as part of `swiftADMIN`'s Build All Apps. See the [swiftCT documentation](docs/swiftCT.md) for full details.
+
 ---
 ## Utilities
 Optional companion apps, launchable directly from swiftCT's Utilities menu (up to 6 configurable slots) or run standalone. These aren't part of the core suite's shared auth or navigation system — they're quick-access desktop extras.
@@ -254,6 +261,7 @@ Optional companion apps, launchable directly from swiftCT's Utilities menu (up t
 | swiftXLOGO | A personal, nostalgic take on xlogo — a colorful X shape with a genuinely transparent background, floating freely on your desktop |
 Documentation: [swiftEYES](docs/swiftEYES.md) · [swiftCLOCK](docs/swiftCLOCK.md) · [swiftSYSINFO](docs/swiftSYSINFO.md) · [swiftXLOGO](docs/swiftXLOGO.md)
 Like swiftCT, all four are Swift Package Manager projects built as universal binaries via their own `build.sh`, and are picked up automatically by `swiftADMIN`'s Build All Apps.
+
 ---
 ## Navigation
 Every app shares a consistent nav footer at the bottom of the screen:
@@ -261,6 +269,7 @@ Every app shares a consistent nav footer at the bottom of the screen:
 [T] Contacts  [C] Calendar  [M] Mail  [N] Notes  [S] Stocks  [V] Vault  [L] Logout
 ```
 Press any letter to jump directly to that app. The current app is highlighted in green.
+
 ---
 ## Security Notes
 - Notes, Vault, and Contacts use **AES-256-GCM** encryption via Apple's CryptoKit
@@ -268,16 +277,19 @@ Press any letter to jump directly to that app. The current app is highlighted in
 - The session key is derived from your password and written to `.core_session` (0600 permissions) for 30 minutes
 - This is a **personal project**, not a hardened security tool. The key derivation is simpler than industry-standard PBKDF2. Do not use for highly sensitive data
 - ttyd with `--writable` exposes a full terminal — use behind Tailscale or another VPN, never expose to the public internet
+
 ---
 ## Contributing
 This started as a personal project. PRs welcome — especially for:
 - Additional calendar account types
 - Windows/Linux compatibility (currently macOS only)
 - F-key navigation — use F1-F7 for suite-wide app switching, eliminating all letter-key conflicts (e.g. C for Calendar, V for Vault, N for Notes). Function keys are currently unused across all apps and would make a clean replacement for the nav footer letter keys
+
 ---
 ## License
 MIT — see [LICENSE](LICENSE)
 `swiftCT` includes [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) by Miguel de Icaza and contributors, also MIT licensed — see [swiftCT/THIRD-PARTY-LICENSES.md](swiftCT/THIRD-PARTY-LICENSES.md) for the full text.
+
 ---
 ## Acknowledgements
 Built with AI assistance from Google Gemini (v1.0) and [Claude](https://claude.ai) by Anthropic (v2.0+). The `c` suffix on every version number is a nod to that collaboration.
