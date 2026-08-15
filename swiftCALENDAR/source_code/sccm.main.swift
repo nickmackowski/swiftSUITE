@@ -2,7 +2,7 @@
 // APP: swiftCALENDAR
 // Calendar with ICS, METAR, and TAF support
 // File: swiftCALENDAR/source_code/sccm.main.swift
-// Updated: 2026-08-11
+// Updated: 2026-08-15
 // ═══════════════════════════════════════════════════════════════
 
 import Foundation
@@ -507,7 +507,7 @@ class CalendarManager {
                                                   // Lighter sky-blue (256-color) rather than standard ANSI
                                                   // blue (1;34m) — the old shade was hard to read against a
                                                   // black terminal background.
-        let birthdayPurple = "\u{001B}[1;38;5;135m"  // same — shared between grid and agenda, birthday overlay
+        let birthdayPurple = "\u{001B}[38;5;135m"  // same — shared between grid and agenda, birthday overlay
         let dueYellow = "\u{001B}[1;33m"  // same — shared between grid and agenda, due-date overlay
 
         func calCell(day: Int, eventColor: String) -> String {
@@ -708,7 +708,8 @@ class CalendarManager {
                 let navMap: [Character: String] = [
                     "t": "swiftCONTACTS", "m": "swiftMAIL",
                     "n": "swiftNOTES",    "s": "swiftSTOCKS",
-                    "v": "swiftVAULT"
+                    "v": "swiftVAULT",
+                    "b": "swiftBASE"
                 ]
                 if let target = navMap[lower] {
                     keyboard.disableRawMode()
@@ -853,7 +854,8 @@ class CalendarManager {
                 let navMap: [Character: String] = [
                     "t": "swiftCONTACTS", "m": "swiftMAIL",
                     "n": "swiftNOTES",    "s": "swiftSTOCKS",
-                    "v": "swiftVAULT"
+                    "v": "swiftVAULT",
+                    "b": "swiftBASE"
                 ]
                 if let target = navMap[lower] {
                     keyboard.disableRawMode()
@@ -1814,8 +1816,9 @@ class CalendarManager {
                     let navMap: [Character: String] = [
                         "t": "swiftCONTACTS", "m": "swiftMAIL",
                         "n": "swiftNOTES",    "s": "swiftSTOCKS",
-                        "v": "swiftVAULT"
-                    ]
+                        "v": "swiftVAULT",
+                    "b": "swiftBASE"
+                ]
                     if let target = navMap[lower] {
                         keyboard.disableRawMode()
                         navigateToApp(target, args: [machineName, uptime, cpuUsage, memUsage])
@@ -1991,8 +1994,9 @@ func printNavFooter(currentApp: String = "swiftCALENDAR") {
     let inner = 118
     // [S] Sync key changed to [R] (Refresh) so [S] is free for Stocks nav — consistent with all other apps.
     let navItems: [(key: String, label: String, folder: String)] = [
-        ("T", "Contacts", "swiftCONTACTS"),
+        ("B", "Base",     "swiftBASE"),
         ("C", "Calendar", "swiftCALENDAR"),
+        ("T", "Contacts", "swiftCONTACTS"),
         ("M", "Mail",     "swiftMAIL"),
         ("N", "Notes",    "swiftNOTES"),
         ("S", "Stocks",   "swiftSTOCKS"),

@@ -2,7 +2,7 @@
 // APP: swiftNOTES
 // AES-256 encrypted notebook with archive
 // File: swiftNOTES/source_code/scn.main.swift
-// Updated: 2026-08-11
+// Updated: 2026-08-15
 // ═══════════════════════════════════════════════════════════════
 
 import Foundation
@@ -1445,8 +1445,9 @@ class NotesManager {
                     let navMap: [Character: String] = [
                         "t": "swiftCONTACTS", "c": "swiftCALENDAR",
                         "s": "swiftSTOCKS",   "m": "swiftMAIL",
-                        "v": "swiftVAULT"
-                    ]
+                        "v": "swiftVAULT",
+                    "b": "swiftBASE"
+                ]
                     if let target = navMap[lower] {
                         keyboard.disableRawMode()
                         navigateToApp(target, args: [machineName, uptime, cpuUsage, memUsage])
@@ -1577,7 +1578,8 @@ class NotesManager {
                 let navMap: [Character: String] = [
                     "t": "swiftCONTACTS", "c": "swiftCALENDAR",
                     "s": "swiftSTOCKS",   "m": "swiftMAIL",
-                    "v": "swiftVAULT"
+                    "v": "swiftVAULT",
+                    "b": "swiftBASE"
                 ]
                 if let target = navMap[lower] {
                     keyboard.disableRawMode()
@@ -1719,8 +1721,9 @@ class NotesManager {
                     let navMap: [Character: String] = [
                         "c": "swiftCALENDAR", "s": "swiftSTOCKS",
                         "m": "swiftMAIL",     "v": "swiftVAULT",
-                        "t": "swiftCONTACTS"
-                    ]
+                        "t": "swiftCONTACTS",
+                    "b": "swiftBASE"
+                ]
                     if let target = navMap[lower] {
                         keyboard.disableRawMode()
                         navigateToApp(target, args: [machineName, uptime, cpuUsage, memUsage])
@@ -2249,8 +2252,9 @@ class NotesManager {
 // MARK: - App Navigation (launcher-less direct switching)
 
 let navApps: [(key: Character, label: String, folder: String)] = [
-    ("t", "Contacts",  "swiftCONTACTS"),
+    ("b", "Base",     "swiftBASE"),
     ("c", "Calendar",  "swiftCALENDAR"),
+    ("t", "Contacts",  "swiftCONTACTS"),
     ("m", "Mail",      "swiftMAIL"),
     ("n", "Notes",     "swiftNOTES"),
     ("s", "Stocks",    "swiftSTOCKS"),

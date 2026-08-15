@@ -2,7 +2,7 @@
 // APP: swiftSTOCKS
 // Portfolio tracker with live market data
 // File: swiftSTOCKS/source_code/scs.main.swift
-// Updated: 2026-08-11
+// Updated: 2026-08-15
 // ═══════════════════════════════════════════════════════════════
 
 import Foundation
@@ -828,8 +828,9 @@ class StocksManager {
                     let navMap: [Character: String] = [
                         "t": "swiftCONTACTS", "c": "swiftCALENDAR",
                         "m": "swiftMAIL",     "n": "swiftNOTES",
-                        "v": "swiftVAULT"
-                    ]
+                        "v": "swiftVAULT",
+                    "b": "swiftBASE"
+                ]
                     if let target = navMap[lower] {
                         keyboard.disableRawMode()
                         navigateToApp(target, args: [machineName, uptime, cpuUsage, memUsage])
@@ -1048,8 +1049,9 @@ class StocksManager {
                     let navMap: [Character: String] = [
                         "t": "swiftCONTACTS", "c": "swiftCALENDAR",
                         "m": "swiftMAIL",     "n": "swiftNOTES",
-                        "v": "swiftVAULT"
-                    ]
+                        "v": "swiftVAULT",
+                    "b": "swiftBASE"
+                ]
                     if let target = navMap[lower] {
                         keyboard.disableRawMode()
                         navigateToApp(target, args: [machineName, uptime, cpuUsage, memUsage])
@@ -1178,8 +1180,9 @@ class StocksManager {
                     let navMap: [Character: String] = [
                         "t": "swiftCONTACTS", "c": "swiftCALENDAR",
                         "m": "swiftMAIL",     "n": "swiftNOTES",
-                        "v": "swiftVAULT"
-                    ]
+                        "v": "swiftVAULT",
+                    "b": "swiftBASE"
+                ]
                     if let target = navMap[lower] {
                         keyboard.disableRawMode()
                         navigateToApp(target, args: [machineName, uptime, cpuUsage, memUsage])
@@ -1476,8 +1479,9 @@ func returnToLauncher() {
 func printNavFooter(currentApp: String = "swiftSTOCKS") {
     let inner = 118
     let navItems: [(key: String, label: String, folder: String)] = [
-        ("T", "Contacts", "swiftCONTACTS"),
+        ("B", "Base",     "swiftBASE"),
         ("C", "Calendar", "swiftCALENDAR"),
+        ("T", "Contacts", "swiftCONTACTS"),
         ("M", "Mail",     "swiftMAIL"),
         ("N", "Notes",    "swiftNOTES"),
         ("S", "Stocks",   "swiftSTOCKS"),

@@ -2,7 +2,7 @@
 // APP: swiftMAIL
 // IMAP/SMTP email client
 // File: swiftMAIL/source_code/scm.main.swift
-// Updated: 2026-08-11
+// Updated: 2026-08-15
 // ═══════════════════════════════════════════════════════════════
 
 import Foundation
@@ -1617,8 +1617,9 @@ class MailManager {
                     let navMap: [Character: String] = [
                         "t": "swiftCONTACTS", "c": "swiftCALENDAR",
                         "n": "swiftNOTES",    "s": "swiftSTOCKS",
-                        "v": "swiftVAULT"
-                    ]
+                        "v": "swiftVAULT",
+                    "b": "swiftBASE"
+                ]
                     if let target = navMap[Character(lowerChar)] {
                         keyboard.disableRawMode()
                         navigateToApp(target, args: [machineName, uptime, cpuUsage, memUsage])
@@ -1736,7 +1737,8 @@ class MailManager {
                 let navMap: [Character: String] = [
                     "t": "swiftCONTACTS", "c": "swiftCALENDAR",
                     "n": "swiftNOTES",    "s": "swiftSTOCKS",
-                    "v": "swiftVAULT"
+                    "v": "swiftVAULT",
+                    "b": "swiftBASE"
                 ]
                 if let target = navMap[Character(lowerChar)] {
                     keyboard.disableRawMode()
@@ -1876,8 +1878,9 @@ class MailManager {
                     let navMap: [Character: String] = [
                         "t": "swiftCONTACTS", "c": "swiftCALENDAR",
                         "n": "swiftNOTES",    "s": "swiftSTOCKS",
-                        "v": "swiftVAULT"
-                    ]
+                        "v": "swiftVAULT",
+                    "b": "swiftBASE"
+                ]
                     if let target = navMap[Character(lower)] {
                         keyboard.disableRawMode()
                         navigateToApp(target, args: [machineName, uptime, cpuUsage, memUsage])
@@ -2768,8 +2771,9 @@ func printNavFooter(currentApp: String = "swiftMAIL") {
     let inner = 118
     // [W] = Compose, [C] = Calendar — no conflicts in mail workspace or reading pane
     let navItems: [(key: String, label: String, folder: String)] = [
-        ("T", "Contacts", "swiftCONTACTS"),
+        ("B", "Base",     "swiftBASE"),
         ("C", "Calendar", "swiftCALENDAR"),
+        ("T", "Contacts", "swiftCONTACTS"),
         ("M", "Mail",     "swiftMAIL"),
         ("N", "Notes",    "swiftNOTES"),
         ("S", "Stocks",   "swiftSTOCKS"),

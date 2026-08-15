@@ -2,7 +2,7 @@
 // APP: swiftVAULT
 // AES-256 encrypted password manager
 // File: swiftVAULT/source_code/scv.main.swift
-// Updated: 2026-08-11
+// Updated: 2026-08-15
 // ═══════════════════════════════════════════════════════════════
 
 import Foundation
@@ -1094,8 +1094,9 @@ class PasswordVaultManager {
                     let navMap: [Character: String] = [
                         "t": "swiftCONTACTS", "c": "swiftCALENDAR",
                         "m": "swiftMAIL",     "n": "swiftNOTES",
-                        "s": "swiftSTOCKS"
-                    ]
+                        "s": "swiftSTOCKS",
+                    "b": "swiftBASE"
+                ]
                     if let target = navMap[lower] {
                         keyboard.disableRawMode()
                         navigateToApp(target, args: [machineName, uptime, cpuUsage, memUsage])
@@ -1195,7 +1196,8 @@ class PasswordVaultManager {
                 let navMap: [Character: String] = [
                     "t": "swiftCONTACTS", "c": "swiftCALENDAR",
                     "m": "swiftMAIL",     "n": "swiftNOTES",
-                    "s": "swiftSTOCKS"
+                    "s": "swiftSTOCKS",
+                    "b": "swiftBASE"
                 ]
                 if let target = navMap[lower] {
                     keyboard.disableRawMode()
@@ -1300,8 +1302,9 @@ class PasswordVaultManager {
                     let navMap: [Character: String] = [
                         "t": "swiftCONTACTS", "c": "swiftCALENDAR",
                         "m": "swiftMAIL",     "n": "swiftNOTES",
-                        "s": "swiftSTOCKS"
-                    ]
+                        "s": "swiftSTOCKS",
+                    "b": "swiftBASE"
+                ]
                     if let target = navMap[lower] {
                         showPasswordPlaintext = false
                         keyboard.disableRawMode()
@@ -1961,8 +1964,9 @@ func returnToLauncher() {
 func printNavFooter(currentApp: String = "swiftVAULT") {
     let inner = 118
     let navItems: [(key: String, label: String, folder: String)] = [
-        ("T", "Contacts", "swiftCONTACTS"),
+        ("B", "Base",     "swiftBASE"),
         ("C", "Calendar", "swiftCALENDAR"),
+        ("T", "Contacts", "swiftCONTACTS"),
         ("M", "Mail",     "swiftMAIL"),
         ("N", "Notes",    "swiftNOTES"),
         ("S", "Stocks",   "swiftSTOCKS"),

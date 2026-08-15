@@ -2,7 +2,7 @@
 // APP: swiftCORE
 // Launcher and authentication hub
 // File: swiftCORE/source_code/scl.main.swift
-// Updated: 2026-08-11
+// Updated: 2026-08-15
 // ═══════════════════════════════════════════════════════════════
 
 import Foundation
@@ -434,8 +434,9 @@ func printLoginBox(lastLoginStr: String? = nil, message: String? = nil, messageI
 func printNavFooter(currentApp: String?) {
     // Map: display label → binary folder name
     let navItems: [(key: String, label: String, app: String)] = [
-        ("T", "Contacts",  "swiftCONTACTS"),
+        ("B", "Base",      "swiftBASE"),
         ("C", "Calendar",  "swiftCALENDAR"),
+        ("T", "Contacts",  "swiftCONTACTS"),
         ("M", "Mail",      "swiftMAIL"),
         ("N", "Notes",     "swiftNOTES"),
         ("S", "Stocks",    "swiftSTOCKS"),
@@ -597,58 +598,6 @@ func runLoginGate(snapshot: SystemSnapshot) {
     }
 }
 
-// MARK: - Backup Utility
-
-func runBackupUtility(snapshot: SystemSnapshot) {
-    restoreTerminalSettings()
-    print("\u{001B}[2J\u{001B}[H", terminator: "")
-    printHeader(snapshot: snapshot, username: readSession().username ?? "UNKNOWN")
-
-    let currentDirURL = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
-    let parentURL = currentDirURL.deletingLastPathComponent()
-    let backupDirURL = parentURL.appendingPathComponent("swiftCORE Suite Backup")
-    if !FileManager.default.fileExists(atPath: backupDirURL.path) {
-        try? FileManager.default.createDirectory(at: backupDirURL, withIntermediateDirectories: true)
-    }
-
-    let fmt = DateFormatter(); fmt.dateFormat = "yyyyMMdd_HHmmss"
-    let archiveName = "swiftcore_backup_\(fmt.string(from: Date())).tar.gz"
-    let destURL = backupDirURL.appendingPathComponent(archiveName)
-
-    print("╭" + String(repeating: "─", count: innerWidth) + "╮")
-    func boxLine(_ text: String) {
-        let p = max(0, (innerWidth - text.count) / 2)
-        print("│" + String(repeating: " ", count: p) + text + String(repeating: " ", count: innerWidth - p - text.count) + "│")
-    }
-    boxLine("")
-    boxLine("swiftCORE Backup Engine")
-    boxLine("")
-    boxLine("Archiving entire suite...")
-    boxLine(destURL.path)
-    boxLine("")
-    print("╰" + String(repeating: "─", count: innerWidth) + "╯")
-
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/tar")
-    process.arguments = ["-czf", destURL.path, "--exclude=*.tar.gz",
-                         "--exclude=swiftCORE Suite Backup", "-C", parentURL.path, "."]
-    process.standardInput = FileHandle.nullDevice
-    do {
-        try process.run(); process.waitUntilExit()
-        if process.terminationStatus == 0 {
-            print("\n \u{001B}[1;32mBackup complete: \(archiveName)\u{001B}[0m")
-            CoreDebugLogger.log("Backup created: \(archiveName)", category: "BACKUP")
-        } else {
-            print("\n \u{001B}[1;31mBackup failed (exit \(process.terminationStatus))\u{001B}[0m")
-        }
-    } catch {
-        print("\n \u{001B}[1;31mBackup error: \(error)\u{001B}[0m")
-    }
-    print("\n Press any key to return...")
-    _ = getchar()
-    configureRawMode()
-}
-
 // MARK: - Main
 
 func main() {
@@ -667,6 +616,7 @@ func main() {
         "m": "swiftMAIL",
         "v": "swiftVAULT",
         "t": "swiftCONTACTS",
+        "b": "swiftBASE",
     ]
 
     configureRawMode()
@@ -707,11 +657,6 @@ func main() {
             print(" Session ended. Goodbye.")
             CoreDebugLogger.log("User logged out", category: "AUTH")
             exit(0)
-        } else if lower == "b" {
-            // [B] Backup — hidden utility key, not shown in nav
-            restoreTerminalSettings()
-            runBackupUtility(snapshot: snapshot)
-            configureRawMode()
         } else if let appName = appMap[lower] {
             restoreTerminalSettings()
             launchApp(named: appName, snapshot: snapshot)

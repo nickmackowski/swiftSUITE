@@ -2,7 +2,7 @@
 // APP: swiftCONTACTS
 // Encrypted contact book
 // File: swiftCONTACTS/source_code/scc.main.swift
-// Updated: 2026-08-11
+// Updated: 2026-08-15
 // ═══════════════════════════════════════════════════════════════
 
 import Foundation
@@ -1024,8 +1024,9 @@ class ContactsManager {
                     let navMap: [Character: String] = [
                         "c": "swiftCALENDAR",
                         "m": "swiftMAIL",   "n": "swiftNOTES",
-                        "s": "swiftSTOCKS", "v": "swiftVAULT"
-                    ]
+                        "s": "swiftSTOCKS", "v": "swiftVAULT",
+                    "b": "swiftBASE"
+                ]
                     if let target = navMap[lower] {
                         keyboard.disableRawMode()
                         navigateToApp(target, args: [machineName, uptime, cpuUsage, memUsage])
@@ -1151,7 +1152,8 @@ class ContactsManager {
                 let navMap: [Character: String] = [
                     "c": "swiftCALENDAR",
                     "m": "swiftMAIL",   "n": "swiftNOTES",
-                    "s": "swiftSTOCKS", "v": "swiftVAULT"
+                    "s": "swiftSTOCKS", "v": "swiftVAULT",
+                    "b": "swiftBASE"
                 ]
                 if let target = navMap[lower] {
                     keyboard.disableRawMode()
@@ -1285,8 +1287,9 @@ class ContactsManager {
                     let navMap: [Character: String] = [
                         "c": "swiftCALENDAR",
                         "m": "swiftMAIL",   "n": "swiftNOTES",
-                        "s": "swiftSTOCKS", "v": "swiftVAULT"
-                    ]
+                        "s": "swiftSTOCKS", "v": "swiftVAULT",
+                    "b": "swiftBASE"
+                ]
                     if let target = navMap[lower] {
                         keyboard.disableRawMode()
                         navigateToApp(target, args: [machineName, uptime, cpuUsage, memUsage])
@@ -1904,8 +1907,9 @@ func returnToLauncher() { navigateToApp("swiftCORE", args: []) }
 func printNavFooter(currentApp: String = "swiftCONTACTS") {
     let inner = 118
     let navItems: [(key: String, label: String, folder: String)] = [
-        ("T", "Contacts", "swiftCONTACTS"),
+        ("B", "Base",     "swiftBASE"),
         ("C", "Calendar", "swiftCALENDAR"),
+        ("T", "Contacts", "swiftCONTACTS"),
         ("M", "Mail",     "swiftMAIL"),
         ("N", "Notes",    "swiftNOTES"),
         ("S", "Stocks",   "swiftSTOCKS"),
