@@ -306,6 +306,7 @@ func printStandardFooter(keys: String) {
 func printNavFooter() {
     let inner = 118
     let navItems: [(key: String, label: String, folder: String)] = [
+        ("B", "Base",     "swiftBASE"),
         ("C", "Calendar", "swiftCALENDAR"),
         ("T", "Contacts", "swiftCONTACTS"),
         ("M", "Mail",     "swiftMAIL"),
@@ -318,7 +319,12 @@ func printNavFooter() {
     let navPad     = max(0, (inner - plainNav.count) / 2)
     var colored = ""
     for item in navItems {
-        colored += "\u{001B}[2m[\(item.key)] \(item.label)\u{001B}[0m  "
+        let label = "[\(item.key)] \(item.label)"
+        if item.folder == "swiftBASE" {
+            colored += "\u{001B}[1;32m\(label)\u{001B}[0m  "
+        } else {
+            colored += "\u{001B}[2m\(label)\u{001B}[0m  "
+        }
     }
     colored += "\u{001B}[1;31m[L] Logout\u{001B}[0m"
     print("╭" + String(repeating: "─", count: inner) + "╮")
