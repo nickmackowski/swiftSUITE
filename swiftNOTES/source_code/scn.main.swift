@@ -2,7 +2,7 @@
 // APP: swiftNOTES
 // AES-256 encrypted notebook with archive
 // File: swiftNOTES/source_code/scn.main.swift
-// Updated: 2026-08-15
+// Updated: 2026-08-17
 // ═══════════════════════════════════════════════════════════════
 
 import Foundation
@@ -18,6 +18,32 @@ import CryptoKit
 func resolveAppDataDirectory() -> URL {
     let executablePath = CommandLine.arguments.first ?? "."
     return URL(fileURLWithPath: executablePath).resolvingSymlinksInPath().deletingLastPathComponent()
+}
+
+// MARK: - View Preferences
+// A small, separate, UNENCRYPTED file for view-only preferences like
+// hideArchived -- deliberately kept out of the encrypted notes.json
+// rather than added as a new field there. It's not sensitive data, and
+// keeping it separate avoids touching the encrypted file's structure
+// (and the backward-compatibility handling that would need) just to
+// remember a display toggle.
+struct NotesPreferences: Codable {
+    var hideArchived: Bool = false
+}
+
+let notesPrefsURL = resolveAppDataDirectory().appendingPathComponent("notes_prefs.json")
+
+func loadNotesPreferences() -> NotesPreferences {
+    guard let data = try? Data(contentsOf: notesPrefsURL),
+          let prefs = try? JSONDecoder().decode(NotesPreferences.self, from: data) else {
+        return NotesPreferences()
+    }
+    return prefs
+}
+
+func saveNotesPreferences(_ prefs: NotesPreferences) {
+    guard let data = try? JSONEncoder().encode(prefs) else { return }
+    try? data.write(to: notesPrefsURL, options: .atomic)
 }
 
 // MARK: - Debug Logger
@@ -405,7 +431,7 @@ class NotesManager {
     var screenStack: [NotesScreen] = [.workspace]
     var running = true
     var selectedIdx = 0
-    var hideArchived = false // workspace filter toggle — archived notes are visible by default
+    var hideArchived = loadNotesPreferences().hideArchived // workspace filter toggle -- now persisted across sessions
     
     // Protects isCaptureSyncing/captureSyncJustFinished, the only state actually touched from
     // both the main thread and the background capture-check thread. Deliberately narrow: unlike
@@ -1302,7 +1328,7 @@ class NotesManager {
             let allSorted = notes.sorted(by: { $0.dateModified > $1.dateModified })
             let sorted = hideArchived ? allSorted.filter { !$0.isArchived } : allSorted
             
-            let noteLabel = "\(sorted.count) Note\(sorted.count == 1 ? "" : "s") Stored"
+            let noteLabel = "\(sorted.count) Note\(sorted.count == 1 ? "" : "s") Stored" + (hideArchived ? " (Archived Hidden)" : "")
             let leftText = " NOTEBOOK: \(noteLabel)"
             let rightText = "● AES-256 ENCRYPTED"
             let statusPadding = max(1, 119 - leftText.count - rightText.count)
@@ -1317,12 +1343,15 @@ class NotesManager {
                 spinnerFrame += 1
                 print(" \u{001B}[1;36mStatus: [ \(frame) ] Checking capture inbox...\u{001B}[0m")
             } else {
-                let backupText = " Last Backup: \(lastBackupTimestamp ?? "Never")  / Archived: \(archivedCount)"
+                let backupTextRaw = " Last Backup: \(lastBackupTimestamp ?? "Never")  / Archived: \(archivedCount)"
+                let archivedColor = archivedCount > 0 ? "\u{001B}[1;33m" : ""
+                let archivedReset = archivedCount > 0 ? "\u{001B}[0m" : ""
+                let backupTextCol = " Last Backup: \(lastBackupTimestamp ?? "Never")  / Archived: \(archivedColor)\(archivedCount)\(archivedReset)"
                 let staleOK = staleNoteKeys.isEmpty
                 let staleText = staleOK ? "● All Notes Current" : "● \(staleNoteKeys.count) Stale (1yr+ untouched)"
-                let stalePadding = max(1, 119 - backupText.count - staleText.count)
+                let stalePadding = max(1, 119 - backupTextRaw.count - staleText.count)
                 let staleColor = staleOK ? "\u{001B}[1;32m" : "\u{001B}[1;33m"
-                print("\(backupText)\(String(repeating: " ", count: stalePadding))\(staleColor)\(staleText)\u{001B}[0m")
+                print("\(backupTextCol)\(String(repeating: " ", count: stalePadding))\(staleColor)\(staleText)\u{001B}[0m")
             }
             
             // Grid box — same rounded-corner style as stocks
@@ -1436,6 +1465,7 @@ class NotesManager {
                     }
                 } else if lower == "r" {
                     hideArchived.toggle()
+                    saveNotesPreferences(NotesPreferences(hideArchived: hideArchived))
                 } else if lower == "u" {
                     keyboard.disableRawMode()
                     navigate(to: .dbUtilities)
