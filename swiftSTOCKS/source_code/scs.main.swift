@@ -566,6 +566,22 @@ class StocksManager {
         }
     }
     
+    private func colorizeFooterKeys(_ line: String) -> String {
+        let segments = line.components(separatedBy: "|")
+        let colored = segments.map { segment -> String in
+            if let bracketRange = segment.range(of: "]"), segment.trimmingCharacters(in: .whitespaces).hasPrefix("[") {
+                let keyPart = String(segment[segment.startIndex..<bracketRange.upperBound])
+                let rest = String(segment[bracketRange.upperBound...])
+                return "\u{001B}[1;32m\(keyPart)\u{001B}[0m\(rest)"
+            }
+            guard let colonRange = segment.range(of: ": ") else { return segment }
+            let keyPart = String(segment[segment.startIndex..<colonRange.lowerBound])
+            let rest = String(segment[colonRange.lowerBound...])
+            return "\u{001B}[1;32m\(keyPart)\u{001B}[0m\(rest)"
+        }
+        return colored.joined(separator: "|")
+    }
+    
     private func printStandardFooter(keys: String) {
         let innerWidth = 118  // 120 total - 2 for │ border chars
         
@@ -584,7 +600,8 @@ class StocksManager {
         for line in wrappedLines {
             let pad = max(0, (innerWidth - line.count) / 2)
             let right = max(0, innerWidth - pad - line.count)
-            print("│" + String(repeating: " ", count: pad) + line + String(repeating: " ", count: right) + "│")
+            let colored = colorizeFooterKeys(line)
+            print("│" + String(repeating: " ", count: pad) + colored + String(repeating: " ", count: right) + "│")
         }
         print("╰" + String(repeating: "─", count: innerWidth) + "╯")
     }
@@ -917,7 +934,9 @@ class StocksManager {
     
     func showAddNewStockScreen() {
         printStandardHeader()
-        centerSubtitle("DATA ENTRY: NEW STOCK POSITION")
+        let title = ">>> swiftSTOCKS ADD POSITION <<<"
+        let pad = max(0, (118 - title.count) / 2)
+        print(String(repeating: " ", count: pad) + title)
         print("  " + String(repeating: "─", count: 118))
         print(" (Type 'esc' + Enter, or press Escape + Enter, to cancel)")
         print("")
@@ -966,7 +985,9 @@ class StocksManager {
     
     func showGlobalSearchScreen() {
         printStandardHeader()
-        centerSubtitle("GLOBAL ENGINE SEARCH TUNNEL")
+        let title = ">>> swiftSTOCKS SEARCH <<<"
+        let pad = max(0, (118 - title.count) / 2)
+        print(String(repeating: " ", count: pad) + title)
         print("  " + String(repeating: "─", count: 118))
         print("")
         print(" Enter Target Ticker Symbol or Company Name: ", terminator: "")
@@ -974,7 +995,7 @@ class StocksManager {
         
         let results = stocks.filter { $0.symbol.contains(query) || $0.companyName.uppercased().contains(query) }
         goBack()
-        navigate(to: .selectLedgerResult(results: results, title: "REGISTRY MATCHES FOR '\(query)'"))
+        navigate(to: .selectLedgerResult(results: results, title: "SEARCH RESULTS FOR '\(query)'"))
     }
     
     func showSelectLedgerResultScreen(results: [StockPosition], title: String) {
@@ -985,7 +1006,9 @@ class StocksManager {
         while true {
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             printStandardHeader()
-            centerSubtitle(title)
+            let screenTitle = ">>> swiftSTOCKS \(title) <<<"
+            let titlePad = max(0, (118 - screenTitle.count) / 2)
+            print(String(repeating: " ", count: titlePad) + screenTitle)
             print(" (Press ESC to go back to previous menu)\n")
             
             print(gridTop)
@@ -1202,6 +1225,9 @@ class StocksManager {
         var s = stocks[index]
         
         printStandardHeader()
+        let title = ">>> swiftSTOCKS EDIT POSITION <<<"
+        let pad = max(0, (118 - title.count) / 2)
+        print(String(repeating: " ", count: pad) + title)
         print(" Edit Position — press Enter to keep the current value.\n")
         
         print(" Company Name [\(s.companyName)]: ", terminator: "")
@@ -1243,16 +1269,22 @@ class StocksManager {
         while true {
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             printStandardHeader()
-            centerSubtitle("DATABASE UTILITIES")
-            print("  " + String(repeating: "─", count: 118))
-            print("")
+            let title = ">>> swiftSTOCKS UTILITIES <<<"
+            let pad = max(0, (118 - title.count) / 2)
+            print(String(repeating: " ", count: pad) + title)
+            print(" Use Arrow Keys or type number selection\n")
             
             for (i, option) in options.enumerated() {
-                let prefix = (i == localIdx) ? " -> " : "    "
-                print("\(prefix)[\(i + 1)]. \(option)")
+                let isSelected = (i == localIdx)
+                let content = "[\(i + 1)]. \(option)"
+                if isSelected {
+                    let full = " -> " + content
+                    let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                    print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                } else {
+                    print("    " + content)
+                }
             }
-            print("")
-            print("  " + String(repeating: "─", count: 118))
             print("")
             printStandardFooter(keys: "↑/↓: Navigate | ENTER: Select | ESC: Back")
             // No printNavFooter() here — suite-wide convention: utilities menus stay pure
@@ -1310,6 +1342,7 @@ class StocksManager {
     }
     
     func backupDatabase() {
+        print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
         printStandardHeader()
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             print("\n Error: No database file found to backup yet. Add a position first.")
@@ -1348,6 +1381,7 @@ class StocksManager {
                 .sorted(by: { $0.lastPathComponent > $1.lastPathComponent })
             
             if backupFiles.isEmpty {
+                print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
                 printStandardHeader()
                 print("\n No backup snapshots found in \(appDir.path).")
                 print(" Press Enter to continue...")
@@ -1361,16 +1395,24 @@ class StocksManager {
             while true {
                 print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
                 printStandardHeader()
-                centerSubtitle("AVAILABLE STOCKS BACKUPS")
+                let title = ">>> swiftSTOCKS BACKUPS <<<"
+                let pad = max(0, (118 - title.count) / 2)
+                print(String(repeating: " ", count: pad) + title)
                 print(" Choose a recovery point via Arrow Keys or Number Keys\n")
                 
                 for (index, file) in backupFiles.enumerated() {
-                    let prefix = (index == selectedBackupIdx) ? " -> " : "    "
-                    print("\(prefix)[\(index + 1)]. \(file.lastPathComponent)")
+                    let isSelected = (index == selectedBackupIdx)
+                    let content = "[\(index + 1)]. \(file.lastPathComponent)"
+                    if isSelected {
+                        let full = " -> " + content
+                        let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                        print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                    } else {
+                        print("    " + content)
+                    }
                 }
-                print("  " + String(repeating: "─", count: 118))
+                print("")
                 printStandardFooter(keys: "↑/↓: Navigate | ENTER: Select | ESC: Back")
-            printNavFooter()
                 
                 switch keyboard.readKey() {
                 case .up: selectedBackupIdx = (selectedBackupIdx == 0) ? backupFiles.count - 1 : selectedBackupIdx - 1
@@ -1420,6 +1462,7 @@ class StocksManager {
     }
     
     func clearDatabase() {
+        print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
         printStandardHeader()
         if stocks.isEmpty {
             print("\n Portfolio is already empty.")

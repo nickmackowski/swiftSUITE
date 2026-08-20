@@ -286,23 +286,6 @@ struct CaptureAccount: Codable {
     var pruneAfterCapture: Bool = true
 }
 
-/// Lets a launch skip the master password prompt if the notebook was unlocked within the last
-/// 30 minutes — even across a separate process launch, since this suite's launcher (swiftCORE)
-/// relaunches each app fresh via execv rather than keeping anything resident in memory between
-/// app switches. This is a deliberate, lower-friction tradeoff for notes specifically (unlike
-/// vault, which always requires the master password) — worth being clear about what it actually
-/// means: the derived encryption key itself sits in this file for up to 30 minutes, at 0600
-/// permissions. Anyone with access to the machine during that window can read the notebook
-/// without ever knowing the master password. That's an intentional, informed tradeoff for a
-/// lower-stakes notes app, not something to also do for vault.
-private struct NotesSessionCache: Codable {
-    var keyBase64: String
-    var kdfSaltBase64: String // must match the notebook currently being opened — guards against
-                               // reusing a cached key from a different notebook (e.g. after a
-                               // restore swapped in a backup protected by a different password)
-    var expiresAt: Date
-}
-
 // MARK: - Navigation State
 
 enum NotesScreen {
@@ -495,54 +478,6 @@ class NotesManager {
     
     // MARK: - Unlock / Create / Migrate
     
-    private let sessionCacheURL = resolveAppDataDirectory().appendingPathComponent(".notes_session")
-    private static let sessionWindow: TimeInterval = 30 * 60 // 30 minutes
-    
-    /// Returns a usable key from the session cache if one exists, hasn't expired, matches this
-    /// notebook's salt, AND still correctly decrypts the canary — that last check is a safety
-    /// net against any mismatch (e.g. same salt but somehow a different key) rather than trusting
-    /// the cache file's contents blindly. Self-cleans an expired file it finds along the way.
-    private func loadValidSessionKey(notebookFile: NotebookFile) -> SymmetricKey? {
-        guard let data = try? Data(contentsOf: sessionCacheURL),
-              let cache = try? JSONDecoder().decode(NotesSessionCache.self, from: data) else {
-            return nil
-        }
-        
-        guard cache.expiresAt > Date() else {
-            try? FileManager.default.removeItem(at: sessionCacheURL)
-            return nil
-        }
-        
-        guard cache.kdfSaltBase64 == notebookFile.kdfSalt,
-              let keyData = Data(base64Encoded: cache.keyBase64) else {
-            return nil
-        }
-        
-        let candidateKey = SymmetricKey(data: keyData)
-        guard let decryptedCanary = try? NotebookCrypto.decrypt(notebookFile.canary, key: candidateKey),
-              decryptedCanary == NotebookCrypto.canaryPlaintext else {
-            return nil
-        }
-        
-        return candidateKey
-    }
-    
-    /// Called after every successful unlock (whether via a fresh password or a cache hit) to
-    /// push the expiry another 30 minutes out — a sliding window, not a fixed one, so staying
-    /// actively in and out of the app doesn't get interrupted just because 30 minutes have
-    /// passed since the very first unlock of the session.
-    private func refreshSessionCache() {
-        let keyBytes = notebookKey.withUnsafeBytes { Data($0) }
-        let cache = NotesSessionCache(
-            keyBase64: keyBytes.base64EncodedString(),
-            kdfSaltBase64: kdfSalt.base64EncodedString(),
-            expiresAt: Date().addingTimeInterval(Self.sessionWindow)
-        )
-        guard let data = try? JSONEncoder().encode(cache) else { return }
-        try? data.write(to: sessionCacheURL, options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: sessionCacheURL.path)
-    }
-    
 
     // MARK: - Unified Auth (v2.5)
     // Reads the session key written by swiftCORE on login.
@@ -570,71 +505,9 @@ class NotesManager {
         let appKeyData = Data(hasher.finalize())
         return SymmetricKey(data: appKeyData)
     }
-
-    // Bounces to swiftCORE if session is expired or missing
-    private func requireValidSession() -> Bool {
-        let sessionFile = resolveAppDataDirectory()
-            .deletingLastPathComponent()
-            .appendingPathComponent("swiftcore")
-            .appendingPathComponent(".core_session")
-        guard let content = try? String(contentsOf: sessionFile, encoding: .utf8) else { return false }
-        for line in content.components(separatedBy: "\n") {
-            let parts = line.components(separatedBy: ":")
-            if parts.count >= 2 && parts[0] == "expires", let ts = Double(parts[1]) {
-                return Date().timeIntervalSince1970 < ts
-            }
-        }
-        return false
-    }
-
+    
     private func unlockOrCreateNotebook() {
-        // v2.5 unified auth: try swiftCORE session key first
-        if let sessionKey = readCoreSessionKey(appID: "swiftNOTES") {
-            guard FileManager.default.fileExists(atPath: fileURL.path) else {
-                // No data file yet — create fresh notebook with session key
-                self.notebookKey = sessionKey
-                self.kdfSalt = NotebookCrypto.randomSalt()
-                self.kdfIterations = NotebookCrypto.kdfIterations
-                self.notes = []
-                saveNotebook()
-                NotesDebugLogger.log("New notebook created via unified auth", category: "NOTES")
-                return
-            }
-            if let data = try? Data(contentsOf: fileURL),
-               let notebookFile = try? JSONDecoder().decode(NotebookFile.self, from: data),
-               let decryptedCanary = try? NotebookCrypto.decrypt(notebookFile.canary, key: sessionKey),
-               decryptedCanary == NotebookCrypto.canaryPlaintext {
-                // Session key works — unlock silently
-                self.notebookKey = sessionKey
-                self.kdfSalt = Data(base64Encoded: notebookFile.kdfSalt) ?? Data()
-                self.kdfIterations = notebookFile.kdfIterations
-                self.notes = notebookFile.notes
-                self.lastBackupTimestamp = notebookFile.lastBackupTimestamp
-                recomputeNoteCaches()
-                NotesDebugLogger.log("Notebook unlocked via swiftCORE session (\(notebookFile.notes.count) notes)", category: "NOTES")
-                return
-            } else if FileManager.default.fileExists(atPath: fileURL.path) {
-                // Data file exists but encrypted with old per-app key — migrate
-                print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
-                printStandardHeader()
-                print("\n \u{001B}[1;33mswiftNOTES v2.5 upgrade:\u{001B}[0m Your notebook was encrypted with a")
-                print(" per-app password (pre-v2.5). It will be reset to use your swiftCORE")
-                print(" login password instead. Any existing notes will be cleared.\n")
-                print(" Press Enter to continue and re-initialize your notebook.")
-                _ = readLine()
-                try? FileManager.default.removeItem(at: fileURL)
-                self.notebookKey = sessionKey
-                self.kdfSalt = NotebookCrypto.randomSalt()
-                self.kdfIterations = NotebookCrypto.kdfIterations
-                self.notes = []
-                saveNotebook()
-                NotesDebugLogger.log("Notebook reset for unified auth migration", category: "NOTES")
-                return
-            }
-        }
-
-        // Fallback: no valid session — bounce to swiftCORE
-        if !requireValidSession() {
+        guard let sessionKey = readCoreSessionKey(appID: "swiftNOTES") else {
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             printStandardHeader()
             print("\n \u{001B}[1;31mSession expired.\u{001B}[0m Please log in via swiftCORE first.")
@@ -645,37 +518,55 @@ class NotesManager {
         }
 
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            createNewNotebook()
+            self.notebookKey = sessionKey
+            self.kdfSalt = NotebookCrypto.randomSalt()
+            self.kdfIterations = NotebookCrypto.kdfIterations
+            self.notes = []
+            saveNotebook()
+            NotesDebugLogger.log("New notebook created via unified auth", category: "NOTES")
             return
         }
-        
+
         guard let data = try? Data(contentsOf: fileURL) else {
             print(" Could not read notes file at \(fileURL.path). Exiting.")
             exit(1)
         }
-        
+
         if let notebookFile = try? JSONDecoder().decode(NotebookFile.self, from: data) {
-            if let cachedKey = loadValidSessionKey(notebookFile: notebookFile) {
-                self.notebookKey = cachedKey
+            if let decryptedCanary = try? NotebookCrypto.decrypt(notebookFile.canary, key: sessionKey),
+               decryptedCanary == NotebookCrypto.canaryPlaintext {
+                self.notebookKey = sessionKey
                 self.kdfSalt = Data(base64Encoded: notebookFile.kdfSalt) ?? Data()
                 self.kdfIterations = notebookFile.kdfIterations
                 self.notes = notebookFile.notes
                 self.lastBackupTimestamp = notebookFile.lastBackupTimestamp
                 recomputeNoteCaches()
-                refreshSessionCache()
-                lastStatusMessage = "Unlocked automatically (active session — no password needed)."
-                lastStatusWasError = false
-                NotesDebugLogger.log("Notebook unlocked via cached session (\(notebookFile.notes.count) notes)", category: "NOTES")
+                NotesDebugLogger.log("Notebook unlocked via swiftCORE session (\(notebookFile.notes.count) notes)", category: "NOTES")
                 return
             }
-            unlockExistingNotebook(notebookFile)
+            // Decodes as a NotebookFile but this session key can't open it — it was protected
+            // under the old per-app password scheme (pre-v2.5). Reset to unified auth.
+            print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
+            printStandardHeader()
+            print("\n \u{001B}[1;33mswiftNOTES v2.5 upgrade:\u{001B}[0m Your notebook was encrypted with a")
+            print(" per-app password (pre-v2.5). It will be reset to use your swiftCORE")
+            print(" login password instead. Any existing notes will be cleared.\n")
+            print(" Press Enter to continue and re-initialize your notebook.")
+            _ = readLine()
+            try? FileManager.default.removeItem(at: fileURL)
+            self.notebookKey = sessionKey
+            self.kdfSalt = NotebookCrypto.randomSalt()
+            self.kdfIterations = NotebookCrypto.kdfIterations
+            self.notes = []
+            saveNotebook()
+            NotesDebugLogger.log("Notebook reset for unified auth migration", category: "NOTES")
             return
         }
         
         // Not the current format — check whether it's a pre-encryption-overhaul notebook (a bare
         // [Note] array with a fake per-note "lock") before giving up.
         if let legacyNotes = try? JSONDecoder().decode([LegacyNote].self, from: data) {
-            migrateLegacyNotebook(legacyNotes)
+            migrateLegacyNotebook(legacyNotes, sessionKey: sessionKey)
             return
         }
         
@@ -819,8 +710,11 @@ class NotesManager {
             
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             printStandardHeader()
-            print("                          >>> MANAGE CAPTURE ACCOUNTS <<<                          ")
+            let title = ">>> swiftNOTES MANAGE CAPTURE ACCOUNTS <<<"
+            let pad = max(0, (118 - title.count) / 2)
+            print(String(repeating: " ", count: pad) + title)
             print(String(repeating: "─", count: 120))
+            print(" Use Arrow Keys or type number selection\n")
             print(" These are the remote send inboxes swiftNOTES checks on launch. Email or")
             print(" text-forward something to any of these addresses to capture it as a note.\n")
             
@@ -828,9 +722,16 @@ class NotesManager {
                 print("   No capture accounts configured yet.\n")
             } else {
                 for (i, acct) in accounts.enumerated() {
-                    let prefix = (i == selectedIdx) ? " -> " : "    "
+                    let isSelected = (i == selectedIdx)
                     let pruneLabel = acct.pruneAfterCapture ? "prune: on" : "prune: off"
-                    print("\(prefix)[\(i + 1)]. \(acct.emailAddress)  (\(acct.imapHost))  [\(pruneLabel)]")
+                    let content = "[\(i + 1)]. \(acct.emailAddress)  (\(acct.imapHost))  [\(pruneLabel)]"
+                    if isSelected {
+                        let full = " -> " + content
+                        let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                        print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                    } else {
+                        print("    " + content)
+                    }
                 }
                 print("")
             }
@@ -887,8 +788,9 @@ class NotesManager {
             target = CaptureAccount()
         }
         
-        print(isNew ? "                          >>> ADD CAPTURE ACCOUNT <<<                          "
-                     : "                          >>> EDIT CAPTURE ACCOUNT <<<                          ")
+        let title = isNew ? ">>> swiftNOTES ADD CAPTURE ACCOUNT <<<" : ">>> swiftNOTES EDIT CAPTURE ACCOUNT <<<"
+        let pad = max(0, (118 - title.count) / 2)
+        print(String(repeating: " ", count: pad) + title)
         print(String(repeating: "─", count: 120))
         print(" This is a remote send inbox you'll email or text-forward notes to for capture.")
         print(" Nothing about this address is hardcoded anywhere — it's stored only in this")
@@ -1001,86 +903,16 @@ class NotesManager {
         goBack()
     }
     
-    private func createNewNotebook() {
-        print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
-        printStandardHeader()
-        print("\n No existing notebook found — let's set one up.\n")
-        print(" Your master password protects every note you store here.")
-        print(" \u{001B}[1;33mThere is no recovery if you forget it — the notebook cannot be\u{001B}[0m")
-        print(" \u{001B}[1;33mdecrypted without it.\u{001B}[0m\n")
-        
-        let password = promptForNewMasterPassword()
-        let salt = NotebookCrypto.randomSalt()
-        let iterations = NotebookCrypto.kdfIterations
-        let key = PBKDF2.deriveKey(password: password, salt: salt, iterations: iterations)
-        
-        self.notebookKey = key
-        self.kdfSalt = salt
-        self.kdfIterations = iterations
-        self.notes = []
-        
-        saveNotebook()
-        refreshSessionCache()
-        NotesDebugLogger.log("New notebook created", category: "NOTES")
-        
-        print("\n \u{001B}[1;32mNotebook created and unlocked.\u{001B}[0m Press Enter to continue.")
-        _ = readLine()
-    }
-    
-    private func unlockExistingNotebook(_ notebookFile: NotebookFile) {
-        guard let saltData = Data(base64Encoded: notebookFile.kdfSalt) else {
-            print(" Notebook file's salt is corrupted. Exiting.")
-            NotesDebugLogger.log("Notebook salt failed to base64-decode", category: "FATAL")
-            exit(1)
-        }
-        
-        print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
-        printStandardHeader()
-        print("\n \u{001B}[1;36mswiftNOTES is locked.\u{001B}[0m\n")
-        
-        var attempts = 0
-        while true {
-            let password = promptForMasterPassword()
-            let key = PBKDF2.deriveKey(password: password, salt: saltData, iterations: notebookFile.kdfIterations)
-            
-            if let decryptedCanary = try? NotebookCrypto.decrypt(notebookFile.canary, key: key),
-               decryptedCanary == NotebookCrypto.canaryPlaintext {
-                self.notebookKey = key
-                self.kdfSalt = saltData
-                self.kdfIterations = notebookFile.kdfIterations
-                self.notes = notebookFile.notes
-                self.lastBackupTimestamp = notebookFile.lastBackupTimestamp
-                recomputeNoteCaches()
-                refreshSessionCache()
-                NotesDebugLogger.log("Notebook unlocked (\(notebookFile.notes.count) notes)", category: "NOTES")
-                return
-            }
-            
-            attempts += 1
-            print(" \u{001B}[1;31mIncorrect master password.\u{001B}[0m\n")
-            NotesDebugLogger.log("Failed unlock attempt \(attempts)", category: "NOTES-AUTH")
-            
-            if attempts >= 5 {
-                print(" Too many failed attempts. Exiting for safety.")
-                NotesDebugLogger.log("Too many failed unlock attempts — exiting", category: "NOTES-AUTH")
-                exit(1)
-            }
-        }
-    }
-    
-    private func migrateLegacyNotebook(_ legacyNotes: [LegacyNote]) {
+    private func migrateLegacyNotebook(_ legacyNotes: [LegacyNote], sessionKey: SymmetricKey) {
         print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
         printStandardHeader()
         print("\n \u{001B}[1;33mThis notebook was created by an older version whose 'lock' only\u{001B}[0m")
         print(" \u{001B}[1;33mgated viewing through the app's menus — note bodies were always\u{001B}[0m")
         print(" \u{001B}[1;33mstored in plain, unencrypted text underneath, locked or not.\u{001B}[0m\n")
-        print(" Upgrading now to real AES-256 encryption. Set a master password to")
-        print(" protect it going forward:\n")
+        print(" Upgrading now to real AES-256 encryption, protected by your swiftCORE login.\n")
         
-        let password = promptForNewMasterPassword()
         let salt = NotebookCrypto.randomSalt()
         let iterations = NotebookCrypto.kdfIterations
-        let key = PBKDF2.deriveKey(password: password, salt: salt, iterations: iterations)
         
         // Old bodies were already plaintext (the "lock" never encrypted anything) — there's
         // nothing to reverse, just encrypt them fresh under the new key. isLocked/challengeHash
@@ -1089,7 +921,7 @@ class NotesManager {
         // free-text label with no real file handling behind it.
         var migrated: [Note] = []
         for legacy in legacyNotes {
-            let encrypted = (try? NotebookCrypto.encrypt(legacy.body, key: key)) ?? ""
+            let encrypted = (try? NotebookCrypto.encrypt(legacy.body, key: sessionKey)) ?? ""
             migrated.append(Note(
                 title: legacy.title,
                 encryptedBody: encrypted,
@@ -1099,52 +931,17 @@ class NotesManager {
             ))
         }
         
-        self.notebookKey = key
+        self.notebookKey = sessionKey
         self.kdfSalt = salt
         self.kdfIterations = iterations
         self.notes = migrated
         
         saveNotebook()
-        refreshSessionCache()
         NotesDebugLogger.log("Migrated legacy notebook: \(migrated.count) notes upgraded to AES-256-GCM", category: "NOTES")
         
         print("\n \u{001B}[1;32mMigration complete — \(migrated.count) note(s) upgraded to AES-256 encryption.\u{001B}[0m")
         print(" Press Enter to continue.")
         _ = readLine()
-    }
-    
-    private func promptForNewMasterPassword() -> String {
-        while true {
-            print(" Create a master password: ", terminator: "")
-            fflush(stdout)
-            let pw1 = keyboard.readMaskedLine()
-            
-            if pw1.isEmpty || pw1 == "\u{1B}" {
-                print(" Master password cannot be empty.\n")
-                continue
-            }
-            if pw1.count < 8 {
-                print(" Use at least 8 characters — this key protects your whole notebook.\n")
-                continue
-            }
-            
-            print(" Confirm master password: ", terminator: "")
-            fflush(stdout)
-            let pw2 = keyboard.readMaskedLine()
-            
-            if pw1 != pw2 {
-                print(" Passwords didn't match — try again.\n")
-                continue
-            }
-            return pw1
-        }
-    }
-    
-    private func promptForMasterPassword() -> String {
-        print(" Master Password: ", terminator: "")
-        fflush(stdout)
-        let input = keyboard.readMaskedLine()
-        return input == "\u{1B}" ? "" : input
     }
     
     // MARK: - Navigation & Input Helpers
@@ -1216,17 +1013,17 @@ class NotesManager {
         var titleLineChars = Array(repeating: " ", count: innerWidth)
         for (i, ch) in dateString.enumerated() where i < innerWidth { titleLineChars[i] = String(ch) }
         for (i, ch) in titleText.enumerated() { titleLineChars[sidePadding + i] = String(ch) }
-        // "swift" plain white; "NOTES" solid mint
+        // "swift" plain white; "NOTES" bright cyan
         titleLineChars[sidePadding + 0] = "\u{001B}[1;97ms\u{001B}[0m"
         titleLineChars[sidePadding + 1] = "\u{001B}[1;97mw\u{001B}[0m"
         titleLineChars[sidePadding + 2] = "\u{001B}[1;97mi\u{001B}[0m"
         titleLineChars[sidePadding + 3] = "\u{001B}[1;97mf\u{001B}[0m"
         titleLineChars[sidePadding + 4] = "\u{001B}[1;97mt\u{001B}[0m"
-        titleLineChars[sidePadding + 5] = "\u{001B}[1;38;5;121mN\u{001B}[0m"
-        titleLineChars[sidePadding + 6] = "\u{001B}[1;38;5;121mO\u{001B}[0m"
-        titleLineChars[sidePadding + 7] = "\u{001B}[1;38;5;121mT\u{001B}[0m"
-        titleLineChars[sidePadding + 8] = "\u{001B}[1;38;5;121mE\u{001B}[0m"
-        titleLineChars[sidePadding + 9] = "\u{001B}[1;38;5;121mS\u{001B}[0m"
+        titleLineChars[sidePadding + 5] = "\u{001B}[1;38;5;51mN\u{001B}[0m"
+        titleLineChars[sidePadding + 6] = "\u{001B}[1;38;5;51mO\u{001B}[0m"
+        titleLineChars[sidePadding + 7] = "\u{001B}[1;38;5;51mT\u{001B}[0m"
+        titleLineChars[sidePadding + 8] = "\u{001B}[1;38;5;51mE\u{001B}[0m"
+        titleLineChars[sidePadding + 9] = "\u{001B}[1;38;5;51mS\u{001B}[0m"
         // Color the trailing 'c' orange without affecting layout positions
         titleLineChars[sidePadding + titleText.count - 1] = "\u{001B}[38;5;208mc\u{001B}[0m"
         let timeStart = innerWidth - timeString.count
@@ -1264,6 +1061,22 @@ class NotesManager {
         print("╰" + String(repeating: "─", count: innerWidth) + "╯")
     }
 
+    private func colorizeFooterKeys(_ line: String) -> String {
+        let segments = line.components(separatedBy: "|")
+        let colored = segments.map { segment -> String in
+            if let bracketRange = segment.range(of: "]"), segment.trimmingCharacters(in: .whitespaces).hasPrefix("[") {
+                let keyPart = String(segment[segment.startIndex..<bracketRange.upperBound])
+                let rest = String(segment[bracketRange.upperBound...])
+                return "\u{001B}[1;38;5;51m\(keyPart)\u{001B}[0m\(rest)"
+            }
+            guard let colonRange = segment.range(of: ": ") else { return segment }
+            let keyPart = String(segment[segment.startIndex..<colonRange.lowerBound])
+            let rest = String(segment[colonRange.lowerBound...])
+            return "\u{001B}[1;38;5;51m\(keyPart)\u{001B}[0m\(rest)"
+        }
+        return colored.joined(separator: "|")
+    }
+    
     private func printStandardFooter(keys: String) {
         let inner = 118
         let segments = keys.components(separatedBy: "|")
@@ -1277,7 +1090,8 @@ class NotesManager {
         print("╭" + String(repeating: "─", count: inner) + "╮")
         for line in lines {
             let p = max(0, (inner - line.count) / 2)
-            print("│" + String(repeating: " ", count: p) + line + String(repeating: " ", count: inner - p - line.count) + "│")
+            let colored = colorizeFooterKeys(line)
+            print("│" + String(repeating: " ", count: p) + colored + String(repeating: " ", count: inner - p - line.count) + "│")
         }
         print("╰" + String(repeating: "─", count: inner) + "╯")
     }
@@ -1540,7 +1354,9 @@ class NotesManager {
     
     func showSearchScreen() {
         printStandardHeader()
-        print("                      >>> SEARCH <<<                       ")
+        let title = ">>> swiftNOTES SEARCH <<<"
+        let pad = max(0, (118 - title.count) / 2)
+        print(String(repeating: " ", count: pad) + title)
         print(String(repeating: "─", count: 120))
         guard let query = getStringInput(prompt: " Enter search keyword, tag, or note content: ") else { return }
         let results = notes.filter { matchesQuery($0, query: query) }
@@ -1564,18 +1380,24 @@ class NotesManager {
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             printStandardHeader()
             
-            let paddingSize = max(0, (120 - title.count - 8) / 2)
-            let paddingSpaces = String(repeating: " ", count: paddingSize)
-            print("\(paddingSpaces)=== \(title) ===")
+            let pad = max(0, (118 - title.count) / 2)
+            print(String(repeating: " ", count: pad) + title)
             print(" (Press ESC to go back to previous menu view)\n")
             
             let resultsDateFormatter = DateFormatter()
             resultsDateFormatter.dateFormat = "MM/dd/yy"
             
             for (idx, note) in sorted.enumerated() {
-                let prefix = (idx == localIdx) ? " -> " : "    "
+                let isSelected = (idx == localIdx)
                 let dateText = resultsDateFormatter.string(from: note.dateModified)
-                print("\(prefix)[\(idx + 1)]. [\(dateText)] \(note.title) \(note.formattedTags())")
+                let content = "[\(idx + 1)]. [\(dateText)] \(note.title) \(note.formattedTags())"
+                if isSelected {
+                    let full = " -> " + content
+                    let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                    print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                } else {
+                    print("    " + content)
+                }
             }
             print(String(repeating: "─", count: 120))
             printStandardFooter(keys: "ENTER/1-9: View | ESC: Back")
@@ -1772,7 +1594,9 @@ class NotesManager {
     
     func showAddNoteScreen() {
         printStandardHeader()
-        print("                                   >>> ADD NOTE <<<                                   ")
+        let title = ">>> swiftNOTES ADD NOTE <<<"
+        let pad = max(0, (118 - title.count) / 2)
+        print(String(repeating: " ", count: pad) + title)
         print(String(repeating: "─", count: 120))
         let titleInput = getStringInput(prompt: " Title: ")
         guard let title = titleInput, !title.isEmpty else {
@@ -1841,7 +1665,9 @@ class NotesManager {
         let currentBody = decryptedBodyCache[noteKey(updatedNote)] ?? (try? NotebookCrypto.decrypt(updatedNote.encryptedBody, key: notebookKey)) ?? ""
         
         printStandardHeader()
-        print("                               >>> EDIT NOTE DATA <<<                               ")
+        let title = ">>> swiftNOTES EDIT NOTE <<<"
+        let pad = max(0, (118 - title.count) / 2)
+        print(String(repeating: " ", count: pad) + title)
         print(String(repeating: "─", count: 120))
         
         if let title = getStringInput(prompt: " Title [\(updatedNote.title)]: "), !title.isEmpty {
@@ -1881,13 +1707,24 @@ class NotesManager {
         while true {
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             printStandardHeader()
-            print("=== UPDATE TEXT OPTIONS ===")
+            let title = ">>> swiftNOTES UPDATE TEXT OPTIONS <<<"
+            let pad = max(0, (118 - title.count) / 2)
+            print(String(repeating: " ", count: pad) + title)
+            print(" Use Arrow Keys or type number selection")
             print(" Choose how you want to alter the entry fields:\n")
             
             for (i, option) in textOptions.enumerated() {
-                let prefix = (i == selectedIdx) ? " -> " : "    "
-                print("\(prefix)[\(i + 1)]. \(option)")
+                let isSelected = (i == selectedIdx)
+                let content = "[\(i + 1)]. \(option)"
+                if isSelected {
+                    let full = " -> " + content
+                    let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                    print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                } else {
+                    print("    " + content)
+                }
             }
+            print("")
             printStandardFooter(keys: "↑/↓: Navigate | ENTER: Select | ESC: Back")
             // No printNavFooter() here — this is a mid-edit submenu; updatedNote (with any
             // title/tags/due-date changes already made earlier in this flow) only gets saved
@@ -1968,13 +1805,17 @@ class NotesManager {
         
         while true {
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
-            print("=== LINE-BY-LINE EDITOR ===")
+            printStandardHeader()
+            let title = ">>> swiftNOTES LINE-BY-LINE EDITOR <<<"
+            let pad = max(0, (118 - title.count) / 2)
+            print(String(repeating: " ", count: pad) + title)
             print(" Select line number to edit, or type '0' to save and finish.\n")
             
             for (idx, line) in lines.enumerated() {
                 print(" \(idx + 1): \(line)")
             }
-            print("===========================")
+            print("")
+            printStandardFooter(keys: "Enter line #: Edit  |  0: Save and Finish")
             
             print("\n Enter line # to modify (0 to exit): ", terminator: "")
             guard let selectionStr = readLine(), let choice = Int(selectionStr) else { continue }
@@ -2013,12 +1854,21 @@ class NotesManager {
         while true {
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             printStandardHeader()
-            print("                             >>> DATABASE UTILITIES <<<                             ")
+            let title = ">>> swiftNOTES UTILITIES <<<"
+            let pad = max(0, (118 - title.count) / 2)
+            print(String(repeating: " ", count: pad) + title)
             print(" Use Arrow Keys or type number selection\n")
             
             for (i, option) in options.enumerated() {
-                let prefix = (i == selectedIdx) ? " -> " : "    "
-                print("\(prefix)[\(i + 1)]. \(option)")
+                let isSelected = (i == selectedIdx)
+                let content = "[\(i + 1)]. \(option)"
+                if isSelected {
+                    let full = " -> " + content
+                    let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                    print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                } else {
+                    print("    " + content)
+                }
             }
             print("")
             printStandardFooter(keys: "↑/↓: Navigate | ENTER: Select | ESC: Back")
@@ -2058,6 +1908,7 @@ class NotesManager {
     }
     
     private func deleteAllNotes() {
+        print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
         printStandardHeader()
         if notes.isEmpty {
             print("\n Notebook is already empty.")
@@ -2083,6 +1934,7 @@ class NotesManager {
     }
     
     private func backupDatabase() {
+        print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
         printStandardHeader()
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             print("\n Error: No database file found to backup yet. Create a note first.")
@@ -2105,7 +1957,7 @@ class NotesManager {
             try FileManager.default.copyItem(at: fileURL, to: backupURL)
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backupURL.path)
             print("\n Backup created successfully: \(backupURL.lastPathComponent)")
-            print(" (This backup is real AES-256 ciphertext, protected by the same master password.)")
+            print(" (This backup is real AES-256 ciphertext, protected by your swiftCORE login.)")
             lastStatusMessage = "Backup created: \(backupURL.lastPathComponent)"
             lastStatusWasError = false
             NotesDebugLogger.log("Backup created: \(backupURL.lastPathComponent)", category: "NOTES")
@@ -2126,6 +1978,7 @@ class NotesManager {
                 .sorted(by: { $0.lastPathComponent > $1.lastPathComponent })
             
             if backupFiles.isEmpty {
+                print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
                 printStandardHeader()
                 print("\n No backup snapshots found in \(appDir.path).")
                 print(" Press Enter to continue...")
@@ -2139,16 +1992,24 @@ class NotesManager {
             while true {
                 print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
                 printStandardHeader()
-                print("                         >>> AVAILABLE BACKUPS <<<                         ")
+                let title = ">>> swiftNOTES BACKUPS <<<"
+                let pad = max(0, (118 - title.count) / 2)
+                print(String(repeating: " ", count: pad) + title)
                 print(" Choose a recovery point via Arrow Keys or Number Keys\n")
-                print(" Note: restoring will re-prompt for the master password that was active")
-                print(" when that backup was made.\n")
+                print(" Note: restoring will use your active swiftCORE session automatically.\n")
                 
                 for (index, file) in backupFiles.enumerated() {
-                    let prefix = (index == selectedIdx) ? " -> " : "    "
-                    print("\(prefix)[\(index + 1)]. \(file.lastPathComponent)")
+                    let isSelected = (index == selectedIdx)
+                    let content = "[\(index + 1)]. \(file.lastPathComponent)"
+                    if isSelected {
+                        let full = " -> " + content
+                        let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                        print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                    } else {
+                        print("    " + content)
+                    }
                 }
-                print(String(repeating: "─", count: 120))
+                print("")
                 printStandardFooter(keys: "↑/↓: Navigate | ENTER: Select | ESC: Back")
                 
                 switch keyboard.readKey() {
@@ -2184,7 +2045,7 @@ class NotesManager {
         }
         try FileManager.default.copyItem(at: file, to: fileURL)
         
-        print("\n Restoring from \(file.lastPathComponent) — this backup has its own master password.\n")
+        print("\n Restoring from \(file.lastPathComponent)...\n")
         
         guard let data = try? Data(contentsOf: fileURL), let notebookFile = try? JSONDecoder().decode(NotebookFile.self, from: data) else {
             print(" \u{001B}[1;31mCould not read that backup file.\u{001B}[0m")
@@ -2200,34 +2061,26 @@ class NotesManager {
             return
         }
         
-        var attempts = 0
-        while true {
-            let password = promptForMasterPassword()
-            let key = PBKDF2.deriveKey(password: password, salt: saltData, iterations: notebookFile.kdfIterations)
-            
-            if let decryptedCanary = try? NotebookCrypto.decrypt(notebookFile.canary, key: key), decryptedCanary == NotebookCrypto.canaryPlaintext {
-                self.notebookKey = key
-                self.kdfSalt = saltData
-                self.kdfIterations = notebookFile.kdfIterations
-                self.notes = notebookFile.notes
-                self.lastBackupTimestamp = notebookFile.lastBackupTimestamp
-                recomputeNoteCaches()
-                refreshSessionCache()
-                NotesDebugLogger.log("Notebook restored from \(file.lastPathComponent)", category: "NOTES")
-                print("\n \u{001B}[1;32mNotebook restored from \(file.lastPathComponent) successfully!\u{001B}[0m")
-                break
-            }
-            
-            attempts += 1
-            print(" \u{001B}[1;31mIncorrect master password for this backup.\u{001B}[0m\n")
-            if attempts >= 5 {
-                print(" Too many failed attempts. Restore aborted.")
-                print(" Press Enter to continue...")
-                _ = readLine()
-                return
-            }
+        // Try swiftCORE's unified-auth session key — this is how the notebook is unlocked
+        // day-to-day, so this is the only path a restore can succeed through.
+        if let sessionKey = readCoreSessionKey(appID: "swiftNOTES"),
+           let decryptedCanary = try? NotebookCrypto.decrypt(notebookFile.canary, key: sessionKey),
+           decryptedCanary == NotebookCrypto.canaryPlaintext {
+            self.notebookKey = sessionKey
+            self.kdfSalt = saltData
+            self.kdfIterations = notebookFile.kdfIterations
+            self.notes = notebookFile.notes
+            self.lastBackupTimestamp = notebookFile.lastBackupTimestamp
+            recomputeNoteCaches()
+            NotesDebugLogger.log("Notebook restored from \(file.lastPathComponent) via unified auth session", category: "NOTES")
+            print("\n \u{001B}[1;32mNotebook restored from \(file.lastPathComponent) successfully!\u{001B}[0m")
+            print(" Press Enter to continue...")
+            _ = readLine()
+            return
         }
         
+        print(" \u{001B}[1;31mCouldn't restore this backup — your swiftCORE session may be")
+        print(" expired. Please log in via swiftCORE and try again.\u{001B}[0m")
         print(" Press Enter to continue...")
         _ = readLine()
     }

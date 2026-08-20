@@ -248,15 +248,6 @@ struct ContactsFile: Codable {
     var lastBackupTimestamp: String? = nil
 }
 
-/// Lets a launch skip the master password prompt if unlocked within the last 30 minutes — even
-/// across a separate process launch, since this suite's launcher (swiftCORE) relaunches each app
-/// fresh via execv rather than keeping anything resident in memory between app switches. Same
-/// deliberate, lower-friction tradeoff as swiftNOTES (not applied to swiftVAULT).
-private struct ContactsSessionCache: Codable {
-    var keyBase64: String
-    var kdfSaltBase64: String
-    var expiresAt: Date
-}
 
 // MARK: - Navigation State
 
@@ -417,47 +408,6 @@ class ContactsManager {
     }
     
     // MARK: - Unlock / Create / Migrate
-    
-    private let sessionCacheURL = resolveAppDataDirectory().appendingPathComponent(".contacts_session")
-    private static let sessionWindow: TimeInterval = 30 * 60 // 30 minutes
-    
-    private func loadValidSessionKey(contactsFile: ContactsFile) -> SymmetricKey? {
-        guard let data = try? Data(contentsOf: sessionCacheURL),
-              let cache = try? JSONDecoder().decode(ContactsSessionCache.self, from: data) else {
-            return nil
-        }
-        
-        guard cache.expiresAt > Date() else {
-            try? FileManager.default.removeItem(at: sessionCacheURL)
-            return nil
-        }
-        
-        guard cache.kdfSaltBase64 == contactsFile.kdfSalt,
-              let keyData = Data(base64Encoded: cache.keyBase64) else {
-            return nil
-        }
-        
-        let candidateKey = SymmetricKey(data: keyData)
-        guard let decryptedCanary = try? ContactsCrypto.decrypt(contactsFile.canary, key: candidateKey),
-              decryptedCanary == ContactsCrypto.canaryPlaintext else {
-            return nil
-        }
-        
-        return candidateKey
-    }
-    
-    private func refreshSessionCache() {
-        let keyBytes = contactsKey.withUnsafeBytes { Data($0) }
-        let cache = ContactsSessionCache(
-            keyBase64: keyBytes.base64EncodedString(),
-            kdfSaltBase64: kdfSalt.base64EncodedString(),
-            expiresAt: Date().addingTimeInterval(Self.sessionWindow)
-        )
-        guard let data = try? JSONEncoder().encode(cache) else { return }
-        try? data.write(to: sessionCacheURL, options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: sessionCacheURL.path)
-    }
-    
 
     // MARK: - Unified Auth (v2.5)
     // Reads the session key written by swiftCORE on login.
@@ -486,67 +436,8 @@ class ContactsManager {
         return SymmetricKey(data: appKeyData)
     }
 
-    // Bounces to swiftCORE if session is expired or missing
-    private func requireValidSession() -> Bool {
-        let sessionFile = resolveAppDataDirectory()
-            .deletingLastPathComponent()
-            .appendingPathComponent("swiftcore")
-            .appendingPathComponent(".core_session")
-        guard let content = try? String(contentsOf: sessionFile, encoding: .utf8) else { return false }
-        for line in content.components(separatedBy: "\n") {
-            let parts = line.components(separatedBy: ":")
-            if parts.count >= 2 && parts[0] == "expires", let ts = Double(parts[1]) {
-                return Date().timeIntervalSince1970 < ts
-            }
-        }
-        return false
-    }
-
     private func unlockOrCreateContacts() {
-        // v2.5 unified auth: try swiftCORE session key first
-        if let sessionKey = readCoreSessionKey(appID: "swiftCONTACTS") {
-            guard FileManager.default.fileExists(atPath: fileURL.path) else {
-                self.contactsKey = sessionKey
-                self.kdfSalt = ContactsCrypto.randomSalt()
-                self.kdfIterations = ContactsCrypto.kdfIterations
-                self.contacts = []
-                saveContacts()
-                ContactsDebugLogger.log("New contacts book created via unified auth", category: "CONTACTS")
-                return
-            }
-            if let data = try? Data(contentsOf: fileURL),
-               let contactsFile = try? JSONDecoder().decode(ContactsFile.self, from: data),
-               let decryptedCanary = try? ContactsCrypto.decrypt(contactsFile.canary, key: sessionKey),
-               decryptedCanary == ContactsCrypto.canaryPlaintext {
-                self.contactsKey = sessionKey
-                self.kdfSalt = Data(base64Encoded: contactsFile.kdfSalt) ?? Data()
-                self.kdfIterations = contactsFile.kdfIterations
-                self.contacts = contactsFile.contacts
-                self.lastBackupTimestamp = contactsFile.lastBackupTimestamp
-                recomputeContactCaches()
-                ContactsDebugLogger.log("Contacts unlocked via swiftCORE session (\(contacts.count) contacts)", category: "CONTACTS")
-                return
-            } else if FileManager.default.fileExists(atPath: fileURL.path) {
-                print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
-                printStandardHeader()
-                print("\n \u{001B}[1;33mswiftCONTACTS v2.5 upgrade:\u{001B}[0m Your contacts were encrypted with a")
-                print(" per-app password (pre-v2.5). They will be reset to use your swiftCORE")
-                print(" login password instead. Any existing contacts will be cleared.\n")
-                print(" Press Enter to continue and re-initialize your contacts book.")
-                _ = readLine()
-                try? FileManager.default.removeItem(at: fileURL)
-                self.contactsKey = sessionKey
-                self.kdfSalt = ContactsCrypto.randomSalt()
-                self.kdfIterations = ContactsCrypto.kdfIterations
-                self.contacts = []
-                saveContacts()
-                ContactsDebugLogger.log("Contacts reset for unified auth migration", category: "CONTACTS")
-                return
-            }
-        }
-
-        // Fallback: no valid session — bounce to swiftCORE
-        if !requireValidSession() {
+        guard let sessionKey = readCoreSessionKey(appID: "swiftCONTACTS") else {
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             printStandardHeader()
             print("\n \u{001B}[1;31mSession expired.\u{001B}[0m Please log in via swiftCORE first.")
@@ -557,126 +448,73 @@ class ContactsManager {
         }
 
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            createNewContactsBook()
+            self.contactsKey = sessionKey
+            self.kdfSalt = ContactsCrypto.randomSalt()
+            self.kdfIterations = ContactsCrypto.kdfIterations
+            self.contacts = []
+            saveContacts()
+            ContactsDebugLogger.log("New contacts book created via unified auth", category: "CONTACTS")
             return
         }
-        
+
         guard let data = try? Data(contentsOf: fileURL) else {
             print(" Could not read contacts file at \(fileURL.path). Exiting.")
             exit(1)
         }
-        
+
         if let contactsFile = try? JSONDecoder().decode(ContactsFile.self, from: data) {
-            if let cachedKey = loadValidSessionKey(contactsFile: contactsFile) {
-                self.contactsKey = cachedKey
+            if let decryptedCanary = try? ContactsCrypto.decrypt(contactsFile.canary, key: sessionKey),
+               decryptedCanary == ContactsCrypto.canaryPlaintext {
+                self.contactsKey = sessionKey
                 self.kdfSalt = Data(base64Encoded: contactsFile.kdfSalt) ?? Data()
                 self.kdfIterations = contactsFile.kdfIterations
                 self.contacts = contactsFile.contacts
                 self.lastBackupTimestamp = contactsFile.lastBackupTimestamp
                 recomputeContactCaches()
-                refreshSessionCache()
-                lastStatusMessage = "Unlocked automatically (active session — no password needed)."
-                lastStatusWasError = false
-                ContactsDebugLogger.log("Contacts unlocked via cached session (\(contactsFile.contacts.count) contacts)", category: "CONTACTS")
+                ContactsDebugLogger.log("Contacts unlocked via swiftCORE session (\(contacts.count) contacts)", category: "CONTACTS")
                 return
             }
-            unlockExistingContacts(contactsFile)
+            // Decodes as a ContactsFile but this session key can't open it — it was protected
+            // under the old per-app password scheme (pre-v2.5). Reset to unified auth.
+            print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
+            printStandardHeader()
+            print("\n \u{001B}[1;33mswiftCONTACTS v2.5 upgrade:\u{001B}[0m Your contacts were encrypted with a")
+            print(" per-app password (pre-v2.5). They will be reset to use your swiftCORE")
+            print(" login password instead. Any existing contacts will be cleared.\n")
+            print(" Press Enter to continue and re-initialize your contacts book.")
+            _ = readLine()
+            try? FileManager.default.removeItem(at: fileURL)
+            self.contactsKey = sessionKey
+            self.kdfSalt = ContactsCrypto.randomSalt()
+            self.kdfIterations = ContactsCrypto.kdfIterations
+            self.contacts = []
+            saveContacts()
+            ContactsDebugLogger.log("Contacts reset for unified auth migration", category: "CONTACTS")
             return
         }
-        
+
         if let legacyContacts = try? JSONDecoder().decode([LegacyContact].self, from: data) {
-            migrateLegacyContacts(legacyContacts)
+            migrateLegacyContacts(legacyContacts, sessionKey: sessionKey)
             return
         }
-        
+
         print(" Contacts file at \(fileURL.path) is unreadable or corrupted. Exiting.")
         ContactsDebugLogger.log("Contacts file present but unparseable in either current or legacy format", category: "FATAL")
         exit(1)
     }
     
-    private func createNewContactsBook() {
-        print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
-        printStandardHeader()
-        print("\n No existing contacts book found — let's set one up.\n")
-        print(" Your master password protects the sensitive details on each contact —")
-        print(" address, phone, birthday, company, and so on. Name and email stay")
-        print(" readable without it, specifically so mail's autocomplete can use them.")
-        print(" \u{001B}[1;33mThere is no recovery if you forget it — those details cannot be\u{001B}[0m")
-        print(" \u{001B}[1;33mdecrypted without it.\u{001B}[0m\n")
-        
-        let password = promptForNewMasterPassword()
-        let salt = ContactsCrypto.randomSalt()
-        let iterations = ContactsCrypto.kdfIterations
-        let key = PBKDF2.deriveKey(password: password, salt: salt, iterations: iterations)
-        
-        self.contactsKey = key
-        self.kdfSalt = salt
-        self.kdfIterations = iterations
-        self.contacts = []
-        
-        saveContacts()
-        refreshSessionCache()
-        ContactsDebugLogger.log("New contacts book created", category: "CONTACTS")
-        
-        print("\n \u{001B}[1;32mContacts book created and unlocked.\u{001B}[0m Press Enter to continue.")
-        _ = readLine()
-    }
-    
-    private func unlockExistingContacts(_ contactsFile: ContactsFile) {
-        guard let saltData = Data(base64Encoded: contactsFile.kdfSalt) else {
-            print(" Contacts file's salt is corrupted. Exiting.")
-            ContactsDebugLogger.log("Contacts salt failed to base64-decode", category: "FATAL")
-            exit(1)
-        }
-        
-        print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
-        printStandardHeader()
-        print("\n \u{001B}[1;36mswiftCONTACTS is locked.\u{001B}[0m\n")
-        
-        var attempts = 0
-        while true {
-            let password = promptForMasterPassword()
-            let key = PBKDF2.deriveKey(password: password, salt: saltData, iterations: contactsFile.kdfIterations)
-            
-            if let decryptedCanary = try? ContactsCrypto.decrypt(contactsFile.canary, key: key),
-               decryptedCanary == ContactsCrypto.canaryPlaintext {
-                self.contactsKey = key
-                self.kdfSalt = saltData
-                self.kdfIterations = contactsFile.kdfIterations
-                self.contacts = contactsFile.contacts
-                self.lastBackupTimestamp = contactsFile.lastBackupTimestamp
-                recomputeContactCaches()
-                refreshSessionCache()
-                ContactsDebugLogger.log("Contacts unlocked (\(contactsFile.contacts.count) contacts)", category: "CONTACTS")
-                return
-            }
-            
-            attempts += 1
-            print(" \u{001B}[1;31mIncorrect master password.\u{001B}[0m\n")
-            ContactsDebugLogger.log("Failed unlock attempt \(attempts)", category: "CONTACTS-AUTH")
-            
-            if attempts >= 5 {
-                print(" Too many failed attempts. Exiting for safety.")
-                ContactsDebugLogger.log("Too many failed unlock attempts — exiting", category: "CONTACTS-AUTH")
-                exit(1)
-            }
-        }
-    }
-    
-    private func migrateLegacyContacts(_ legacyContacts: [LegacyContact]) {
+    private func migrateLegacyContacts(_ legacyContacts: [LegacyContact], sessionKey: SymmetricKey) {
         print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
         printStandardHeader()
         print("\n \u{001B}[1;33mThis contacts book was created by an older version that stored\u{001B}[0m")
         print(" \u{001B}[1;33mevery field — including address, phone, and birthday — in plain,\u{001B}[0m")
         print(" \u{001B}[1;33munencrypted text.\u{001B}[0m\n")
         print(" Upgrading now: name and email will stay readable (so mail's")
-        print(" autocomplete can use them), everything else will be encrypted.")
-        print(" Set a master password to protect it going forward:\n")
+        print(" autocomplete can use them), everything else will be encrypted,")
+        print(" protected by your swiftCORE login.\n")
         
-        let password = promptForNewMasterPassword()
         let salt = ContactsCrypto.randomSalt()
         let iterations = ContactsCrypto.kdfIterations
-        let key = PBKDF2.deriveKey(password: password, salt: salt, iterations: iterations)
         
         var migrated: [Contact] = []
         for legacy in legacyContacts {
@@ -694,7 +532,7 @@ class ContactsManager {
                 company: legacy.company
             )
             let detailsJSON = (try? JSONEncoder().encode(details)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
-            let encrypted = (try? ContactsCrypto.encrypt(detailsJSON, key: key)) ?? ""
+            let encrypted = (try? ContactsCrypto.encrypt(detailsJSON, key: sessionKey)) ?? ""
             
             migrated.append(Contact(
                 firstName: legacy.firstName,
@@ -707,52 +545,17 @@ class ContactsManager {
             ))
         }
         
-        self.contactsKey = key
+        self.contactsKey = sessionKey
         self.kdfSalt = salt
         self.kdfIterations = iterations
         self.contacts = migrated
         
         saveContacts()
-        refreshSessionCache()
         ContactsDebugLogger.log("Migrated legacy contacts: \(migrated.count) records upgraded to AES-256-GCM", category: "CONTACTS")
         
         print("\n \u{001B}[1;32mMigration complete — \(migrated.count) contact(s) upgraded.\u{001B}[0m")
         print(" Press Enter to continue.")
         _ = readLine()
-    }
-    
-    private func promptForNewMasterPassword() -> String {
-        while true {
-            print(" Create a master password: ", terminator: "")
-            fflush(stdout)
-            let pw1 = keyboard.readMaskedLine()
-            
-            if pw1.isEmpty || pw1 == "\u{1B}" {
-                print(" Master password cannot be empty.\n")
-                continue
-            }
-            if pw1.count < 8 {
-                print(" Use at least 8 characters — this key protects your whole contacts book.\n")
-                continue
-            }
-            
-            print(" Confirm master password: ", terminator: "")
-            fflush(stdout)
-            let pw2 = keyboard.readMaskedLine()
-            
-            if pw1 != pw2 {
-                print(" Passwords didn't match — try again.\n")
-                continue
-            }
-            return pw1
-        }
-    }
-    
-    private func promptForMasterPassword() -> String {
-        print(" Master Password: ", terminator: "")
-        fflush(stdout)
-        let input = keyboard.readMaskedLine()
-        return input == "\u{1B}" ? "" : input
     }
     
     // MARK: - Navigation & Input Helpers
@@ -875,6 +678,22 @@ class ContactsManager {
         print("╰" + String(repeating: "─", count: innerWidth) + "╯")
     }
 
+    private func colorizeFooterKeys(_ line: String) -> String {
+        let segments = line.components(separatedBy: "|")
+        let colored = segments.map { segment -> String in
+            if let bracketRange = segment.range(of: "]"), segment.trimmingCharacters(in: .whitespaces).hasPrefix("[") {
+                let keyPart = String(segment[segment.startIndex..<bracketRange.upperBound])
+                let rest = String(segment[bracketRange.upperBound...])
+                return "\u{001B}[1;38;5;208m\(keyPart)\u{001B}[0m\(rest)"
+            }
+            guard let colonRange = segment.range(of: ": ") else { return segment }
+            let keyPart = String(segment[segment.startIndex..<colonRange.lowerBound])
+            let rest = String(segment[colonRange.lowerBound...])
+            return "\u{001B}[1;38;5;208m\(keyPart)\u{001B}[0m\(rest)"
+        }
+        return colored.joined(separator: "|")
+    }
+    
     private func printStandardFooter(keys: String) {
         let inner = 118
         let segs = keys.components(separatedBy: "|")
@@ -887,7 +706,8 @@ class ContactsManager {
         print("╭" + String(repeating: "─", count: inner) + "╮")
         for line in lines {
             let p = max(0, (inner - line.count) / 2)
-            print("│" + String(repeating: " ", count: p) + line + String(repeating: " ", count: inner - p - line.count) + "│")
+            let colored = colorizeFooterKeys(line)
+            print("│" + String(repeating: " ", count: p) + colored + String(repeating: " ", count: inner - p - line.count) + "│")
         }
         print("╰" + String(repeating: "─", count: inner) + "╯")
     }
@@ -1085,7 +905,9 @@ class ContactsManager {
     
     func showSearchScreen() {
         printStandardHeader()
-        print("                        >>> swiftCONTACTS SEARCH ENGINE <<<                         ")
+        let title = ">>> swiftCONTACTS SEARCH <<<"
+        let pad = max(0, (118 - title.count) / 2)
+        print(String(repeating: " ", count: pad) + title)
         print(String(repeating: "─", count: 120))
         guard let query = getStringInput(prompt: " Enter search phrase or category tag: ") else { return }
         let results = contacts.filter { matchesQuery($0, query: query) }
@@ -1109,16 +931,22 @@ class ContactsManager {
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             printStandardHeader()
             
-            let paddingSize = max(0, (84 - title.count - 8) / 2)
-            let paddingSpaces = String(repeating: " ", count: paddingSize)
-            print("\(paddingSpaces)=== \(title) ===")
+            let pad = max(0, (118 - title.count) / 2)
+            print(String(repeating: " ", count: pad) + title)
             print(" (Press ESC to go back to previous menu view)\n")
             
             for (idx, contact) in sorted.enumerated() {
-                let prefix = (idx == localIdx) ? " -> " : "    "
+                let isSelected = (idx == localIdx)
                 let company = decryptedDetailsCache[contactKey(contact)]?.company ?? ""
                 let companySuffix = company.isEmpty ? "" : " [\(company)]"
-                print("\(prefix)[\(idx + 1)]. \(contact.displayName)\(companySuffix)")
+                let content = "[\(idx + 1)]. \(contact.displayName)\(companySuffix)"
+                if isSelected {
+                    let full = " -> " + content
+                    let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                    print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                } else {
+                    print("    " + content)
+                }
             }
             print(String(repeating: "─", count: 120))
             printStandardFooter(keys: "ENTER/1-9: View | ESC: Back")
@@ -1308,7 +1136,9 @@ class ContactsManager {
 
     func showAddContactScreen() {
         printStandardHeader()
-        print("                              >>> ADD NEW CONTACT <<<                               ")
+        let title = ">>> swiftCONTACTS ADD CONTACT <<<"
+        let pad = max(0, (118 - title.count) / 2)
+        print(String(repeating: " ", count: pad) + title)
         print(String(repeating: "─", count: 120))
         guard let first = getStringInput(prompt: " First Name: ") else { return }
         guard let last = getStringInput(prompt: " Last Name: ") else { return }
@@ -1390,7 +1220,9 @@ class ContactsManager {
             ?? ContactDetails()
         
         printStandardHeader()
-        print("                                >>> EDIT CONTACT <<<                                ")
+        let title = ">>> swiftCONTACTS EDIT CONTACT <<<"
+        let pad = max(0, (118 - title.count) / 2)
+        print(String(repeating: " ", count: pad) + title)
         print(String(repeating: "─", count: 120))
         print(" Press Enter to keep existing values.\n")
         
@@ -1462,14 +1294,23 @@ class ContactsManager {
         while true {
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             printStandardHeader()
-            print("                             >>> DATABASE UTILITIES <<<                             ")
+            let title = ">>> swiftCONTACTS UTILITIES <<<"
+            let pad = max(0, (118 - title.count) / 2)
+            print(String(repeating: " ", count: pad) + title)
             print(" Use Arrow Keys or type number selection\n")
             
             for (i, option) in options.enumerated() {
-                let prefix = (i == selectedIdx) ? " -> " : "    "
-                print("\(prefix)[\(i + 1)]. \(option)")
+                let isSelected = (i == selectedIdx)
+                let content = "[\(i + 1)]. \(option)"
+                if isSelected {
+                    let full = " -> " + content
+                    let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                    print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                } else {
+                    print("    " + content)
+                }
             }
-            print(String(repeating: "─", count: 120))
+            print("")
             
             printStandardFooter(keys: "↑/↓: Navigate | ENTER: Select | ESC: Back")
             
@@ -1509,6 +1350,7 @@ class ContactsManager {
     }
     
     private func deleteAllContacts() {
+        print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
         printStandardHeader()
         if contacts.isEmpty {
             print("\n Contacts book is already empty.")
@@ -1534,6 +1376,7 @@ class ContactsManager {
     }
     
     private func backupDatabase() {
+        print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
         printStandardHeader()
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             print("\n Error: No database file found to backup yet. Add a contact first.")
@@ -1557,7 +1400,7 @@ class ContactsManager {
             try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backupURL.path)
             print("\n Backup created successfully: \(backupURL.lastPathComponent)")
             print(" (This backup is real AES-256 ciphertext for the sensitive fields, protected")
-            print(" by the same master password. Name/email were already stored in plain text.)")
+            print(" by your swiftCORE login. Name/email were already stored in plain text.)")
             lastStatusMessage = "Backup created: \(backupURL.lastPathComponent)"
             lastStatusWasError = false
             ContactsDebugLogger.log("Backup created: \(backupURL.lastPathComponent)", category: "CONTACTS")
@@ -1578,6 +1421,7 @@ class ContactsManager {
                 .sorted(by: { $0.lastPathComponent > $1.lastPathComponent })
             
             if backupFiles.isEmpty {
+                print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
                 printStandardHeader()
                 print("\n No backup snapshots found in \(appDir.path).")
                 print(" Press Enter to continue...")
@@ -1591,16 +1435,24 @@ class ContactsManager {
             while true {
                 print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
                 printStandardHeader()
-                print("                         >>> AVAILABLE CONTACTS BACKUPS <<<                         ")
+                let title = ">>> swiftCONTACTS BACKUPS <<<"
+                let pad = max(0, (118 - title.count) / 2)
+                print(String(repeating: " ", count: pad) + title)
                 print(" Choose a recovery point via Arrow Keys or Number Keys\n")
-                print(" Note: restoring will re-prompt for the master password that was active")
-                print(" when that backup was made.\n")
+                print(" Note: restoring will use your active swiftCORE session automatically.\n")
                 
                 for (index, file) in backupFiles.enumerated() {
-                    let prefix = (index == selectedIdx) ? " -> " : "    "
-                    print("\(prefix)[\(index + 1)]. \(file.lastPathComponent)")
+                    let isSelected = (index == selectedIdx)
+                    let content = "[\(index + 1)]. \(file.lastPathComponent)"
+                    if isSelected {
+                        let full = " -> " + content
+                        let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                        print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                    } else {
+                        print("    " + content)
+                    }
                 }
-                print(String(repeating: "─", count: 120))
+                print("")
                 printStandardFooter(keys: "↑/↓: Navigate | ENTER: Select | ESC: Back")
                 
                 switch keyboard.readKey() {
@@ -1636,7 +1488,7 @@ class ContactsManager {
         }
         try FileManager.default.copyItem(at: file, to: fileURL)
         
-        print("\n Restoring from \(file.lastPathComponent) — this backup has its own master password.\n")
+        print("\n Restoring from \(file.lastPathComponent)...\n")
         
         guard let data = try? Data(contentsOf: fileURL), let contactsFile = try? JSONDecoder().decode(ContactsFile.self, from: data) else {
             print(" \u{001B}[1;31mCould not read that backup file.\u{001B}[0m")
@@ -1652,34 +1504,26 @@ class ContactsManager {
             return
         }
         
-        var attempts = 0
-        while true {
-            let password = promptForMasterPassword()
-            let key = PBKDF2.deriveKey(password: password, salt: saltData, iterations: contactsFile.kdfIterations)
-            
-            if let decryptedCanary = try? ContactsCrypto.decrypt(contactsFile.canary, key: key), decryptedCanary == ContactsCrypto.canaryPlaintext {
-                self.contactsKey = key
-                self.kdfSalt = saltData
-                self.kdfIterations = contactsFile.kdfIterations
-                self.contacts = contactsFile.contacts
-                self.lastBackupTimestamp = contactsFile.lastBackupTimestamp
-                recomputeContactCaches()
-                refreshSessionCache()
-                ContactsDebugLogger.log("Contacts restored from \(file.lastPathComponent)", category: "CONTACTS")
-                print("\n \u{001B}[1;32mContacts restored from \(file.lastPathComponent) successfully!\u{001B}[0m")
-                break
-            }
-            
-            attempts += 1
-            print(" \u{001B}[1;31mIncorrect master password for this backup.\u{001B}[0m\n")
-            if attempts >= 5 {
-                print(" Too many failed attempts. Restore aborted.")
-                print(" Press Enter to continue...")
-                _ = readLine()
-                return
-            }
+        // Try swiftCORE's unified-auth session key — this is how contacts is unlocked day-to-day,
+        // so this is the only path a restore can succeed through.
+        if let sessionKey = readCoreSessionKey(appID: "swiftCONTACTS"),
+           let decryptedCanary = try? ContactsCrypto.decrypt(contactsFile.canary, key: sessionKey),
+           decryptedCanary == ContactsCrypto.canaryPlaintext {
+            self.contactsKey = sessionKey
+            self.kdfSalt = saltData
+            self.kdfIterations = contactsFile.kdfIterations
+            self.contacts = contactsFile.contacts
+            self.lastBackupTimestamp = contactsFile.lastBackupTimestamp
+            recomputeContactCaches()
+            ContactsDebugLogger.log("Contacts restored from \(file.lastPathComponent) via unified auth session", category: "CONTACTS")
+            print("\n \u{001B}[1;32mContacts restored from \(file.lastPathComponent) successfully!\u{001B}[0m")
+            print(" Press Enter to continue...")
+            _ = readLine()
+            return
         }
         
+        print(" \u{001B}[1;31mCouldn't restore this backup — your swiftCORE session may be")
+        print(" expired. Please log in via swiftCORE and try again.\u{001B}[0m")
         print(" Press Enter to continue...")
         _ = readLine()
     }
@@ -1691,6 +1535,7 @@ class ContactsManager {
     // code can avoid. Both directions get an explicit warning about that.
     
     func exportToCSV() {
+        print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
         printStandardHeader()
         print(" \u{001B}[1;33mWarning: the exported file will contain every field in plain text,\u{001B}[0m")
         print(" \u{001B}[1;33mincluding the ones normally encrypted at rest (phone, address, DOB).\u{001B}[0m")
@@ -1736,6 +1581,7 @@ class ContactsManager {
     }
 
     func importFromCSV() {
+        print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
         printStandardHeader()
         let importURL = resolveAppDataDirectory().appendingPathComponent("contacts.csv")
         

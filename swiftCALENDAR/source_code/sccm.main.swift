@@ -419,11 +419,28 @@ class CalendarManager {
         print("╰" + String(repeating: "─", count: innerWidth) + "╯")
     }
     
-    private func printStandardFooter(keys: String = "←/→: Day  ↑/↓: Week  <,: Prev Month  .:> Next Month  [E] New Event  [A] Accounts  ENTER: View") {
+    private func colorizeFooterKeys(_ line: String) -> String {
+        let segments = line.components(separatedBy: "|")
+        let colored = segments.map { segment -> String in
+            if let bracketRange = segment.range(of: "]"), segment.trimmingCharacters(in: .whitespaces).hasPrefix("[") {
+                let keyPart = String(segment[segment.startIndex..<bracketRange.upperBound])
+                let rest = String(segment[bracketRange.upperBound...])
+                return "\u{001B}[1;38;5;211m\(keyPart)\u{001B}[0m\(rest)"
+            }
+            guard let colonRange = segment.range(of: ": ") else { return segment }
+            let keyPart = String(segment[segment.startIndex..<colonRange.lowerBound])
+            let rest = String(segment[colonRange.lowerBound...])
+            return "\u{001B}[1;38;5;211m\(keyPart)\u{001B}[0m\(rest)"
+        }
+        return colored.joined(separator: "|")
+    }
+    
+    private func printStandardFooter(keys: String = "←/→: Day | ↑/↓: Week | <,: Prev Month | .:> Next Month | [E] New Event | [A] Accounts | ENTER: View") {
         let inner = 118
         let p = max(0, (inner - keys.count) / 2)
+        let colored = colorizeFooterKeys(keys)
         print("╭" + String(repeating: "─", count: inner) + "╮")
-        print("│" + String(repeating: " ", count: p) + keys + String(repeating: " ", count: inner - p - keys.count) + "│")
+        print("│" + String(repeating: " ", count: p) + colored + String(repeating: " ", count: inner - p - keys.count) + "│")
         print("╰" + String(repeating: "─", count: inner) + "╯")
     }
     
@@ -1739,7 +1756,8 @@ class CalendarManager {
                 print("│\(msg)\(String(repeating: " ", count: inner - msg.count))│")
             } else {
                 for (i, acct) in calendarAccounts.enumerated() {
-                    let ptr     = i == selectedIdx ? " -> " : "    "
+                    let isSelected = (i == selectedIdx)
+                    let ptr     = isSelected ? " -> " : "    "
                     let status  = acct.enabled ? "\u{001B}[1;32m●\u{001B}[0m Active  " : "\u{001B}[2m○ Off    \u{001B}[0m"
                     let color   = colorForCalendar(acct.name)
                     let colName: String
@@ -1758,13 +1776,18 @@ class CalendarManager {
                     let colorTag = "  Color: \(color)\(colName)\u{001B}[0m"
                     let colorTagPlain = "  Color: \(colName)"
                     let pad = max(0, inner - namePlain.count - rightPlain.count - colorTagPlain.count)
-                    print("│\(namePart)\(right)\(String(repeating: " ", count: pad))\(colorTag)│")
+                    if isSelected {
+                        let fullPlain = namePlain + rightPlain + String(repeating: " ", count: pad) + colorTagPlain
+                        let padded = fullPlain.padding(toLength: inner, withPad: " ", startingAt: 0)
+                        print("│\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m│")
+                    } else {
+                        print("│\(namePart)\(right)\(String(repeating: " ", count: pad))\(colorTag)│")
+                    }
                 }
             }
             print("╰" + String(repeating: "─", count: inner) + "╯")
             print("")
             printStandardFooter(keys: "↑/↓: Select | ENTER: Edit | A: Add | D: Delete | X: Toggle | ESC: Back")
-            printNavFooter()
 
             keyboard.enableRawMode()
             let key = keyboard.readKey()

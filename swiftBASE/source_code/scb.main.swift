@@ -295,11 +295,28 @@ class BaseKeyboardReader {
 }
 
 // MARK: - Footer (header moves into BaseApp below, since it needs telemetry state)
+func colorizeFooterKeys(_ line: String) -> String {
+    let segments = line.components(separatedBy: "|")
+    let colored = segments.map { segment -> String in
+        if let bracketRange = segment.range(of: "]"), segment.trimmingCharacters(in: .whitespaces).hasPrefix("[") {
+            let keyPart = String(segment[segment.startIndex..<bracketRange.upperBound])
+            let rest = String(segment[bracketRange.upperBound...])
+            return "\u{001B}[1;38;5;111m\(keyPart)\u{001B}[0m\(rest)"
+        }
+        guard let colonRange = segment.range(of: ": ") else { return segment }
+        let keyPart = String(segment[segment.startIndex..<colonRange.lowerBound])
+        let rest = String(segment[colonRange.lowerBound...])
+        return "\u{001B}[1;38;5;111m\(keyPart)\u{001B}[0m\(rest)"
+    }
+    return colored.joined(separator: "|")
+}
+
 func printStandardFooter(keys: String) {
     let inner = 118
     let p = max(0, (inner - keys.count) / 2)
+    let colored = colorizeFooterKeys(keys)
     print("╭" + String(repeating: "─", count: inner) + "╮")
-    print("│" + String(repeating: " ", count: p) + keys + String(repeating: " ", count: inner - p - keys.count) + "│")
+    print("│" + String(repeating: " ", count: p) + colored + String(repeating: " ", count: inner - p - keys.count) + "│")
     print("╰" + String(repeating: "─", count: inner) + "╯")
 }
 
@@ -670,9 +687,10 @@ class BaseApp {
     // MARK: - Global Search (across every database at once)
     func showGlobalSearchScreen() {
         printStandardHeader()
-        print("                        >>> swiftBASE GLOBAL SEARCH <<<                              ")
+        let title = ">>> swiftBASE GLOBAL SEARCH <<<"
+        let pad = max(0, (118 - title.count) / 2)
+        print(String(repeating: " ", count: pad) + title)
         print(String(repeating: "─", count: 118))
-        printNavFooter()
         print(" Searches every database at once. Enter search phrase: ", terminator: "")
         guard let query = readLine(), !query.isEmpty else { goBack(); return }
 
@@ -706,10 +724,17 @@ class BaseApp {
             print(" (Press ESC to go back)\n")
 
             for (idx, match) in results.enumerated() {
-                let prefix = (idx == localIdx) ? " -> " : "    "
+                let isSelected = (idx == localIdx)
                 let displayField = match.database.fields.first(where: { !$0.isBlankLine })?.name ?? ""
                 let display = match.record.values[displayField] ?? "(untitled)"
-                print("\(prefix)[\(idx + 1)]. \(display)  —  (\(match.database.name))")
+                let content = "[\(idx + 1)]. \(display)  —  (\(match.database.name))"
+                if isSelected {
+                    let full = " -> " + content
+                    let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                    print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                } else {
+                    print("    " + content)
+                }
             }
             print(String(repeating: "─", count: 118))
             printStandardFooter(keys: "ENTER/1-9: Open  |  ESC: Back")
@@ -756,17 +781,24 @@ class BaseApp {
             let pad = max(0, (118 - title.count) / 2)
             print(String(repeating: " ", count: pad) + title)
             print(" Use Arrow Keys or type number selection")
+            print("")
             for (idx, item) in items.enumerated() {
-                let prefix = (idx == selectedIdx) ? " -> " : "    "
-                print("\(prefix)[\(idx + 1)]. \(item)")
+                let isSelected = (idx == selectedIdx)
+                let content = "[\(idx + 1)]. \(item)"
+                if isSelected {
+                    let full = " -> " + content
+                    let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                    print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                } else {
+                    print("    " + content)
+                }
             }
             if let msg = message {
                 print("")
                 print(" \u{001B}[1;32m\(msg)\u{001B}[0m")
             }
-            print(String(repeating: "─", count: 118))
+            print("")
             printStandardFooter(keys: "ENTER/1-3: Select  |  ESC: Back")
-            printNavFooter()
 
             switch keyboard.readKey() {
             case .up: selectedIdx = (selectedIdx == 0) ? items.count - 1 : selectedIdx - 1
@@ -886,8 +918,9 @@ class BaseApp {
 
     func showCreateDatabaseScreen() {
         printStandardHeader()
-        print(" CREATE NEW DATABASE\n")
-        printNavFooter()
+        let title = ">>> swiftBASE CREATE DATABASE <<<"
+        let pad = max(0, (118 - title.count) / 2)
+        print(String(repeating: " ", count: pad) + title + "\n")
         print(" Database name: ", terminator: "")
         guard let name = readLine(), !name.isEmpty else { goBack(); return }
 
@@ -980,7 +1013,7 @@ class BaseApp {
                 }
             }
             print("╰" + String(repeating: "─", count: 118) + "╯")
-            printStandardFooter(keys: "ENTER/1-9: View  |  [/] Search  |  [A] Add  |  [M] Modify  |  ESC: All Databases")
+            printStandardFooter(keys: "ENTER/1-9: View  |  [/] Search  |  [A] Add  |  [O] Modify  |  ESC: All Databases")
             printNavFooter()
 
             switch keyboard.readKey() {
@@ -1015,7 +1048,7 @@ class BaseApp {
                     keyboard.disableRawMode()
                     navigate(to: .addRecord(database: database))
                     return
-                } else if lower == "m" {
+                } else if lower == "o" {
                     keyboard.disableRawMode()
                     navigate(to: .modify(database: database))
                     return
@@ -1051,23 +1084,28 @@ class BaseApp {
         while true {
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             printStandardHeader()
-            let title = "MODIFY \(database.name.uppercased())"
+            let title = ">>> swiftBASE MODIFY \(database.name.uppercased()) <<<"
             let pad = max(0, (118 - title.count) / 2)
             print(String(repeating: " ", count: pad) + title)
             print(" Use Arrow Keys or type number selection")
             print("")
             for (idx, item) in items.enumerated() {
-                let prefix = (idx == selectedIdx) ? " -> " : "    "
-                print("\(prefix)[\(idx + 1)]. \(item)")
+                let isSelected = (idx == selectedIdx)
+                let content = "[\(idx + 1)]. \(item)"
+                if isSelected {
+                    let full = " -> " + content
+                    let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                    print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                } else {
+                    print("    " + content)
+                }
             }
             if let msg = message {
                 print("")
                 print(" \u{001B}[1;32m\(msg)\u{001B}[0m")
             }
             print("")
-            print(String(repeating: "─", count: 118))
             printStandardFooter(keys: "ENTER/1-5: Select  |  ESC: Back")
-            printNavFooter()
 
             switch keyboard.readKey() {
             case .up: selectedIdx = (selectedIdx == 0) ? items.count - 1 : selectedIdx - 1
@@ -1155,19 +1193,27 @@ class BaseApp {
             if selectedIdx >= fields.count { selectedIdx = max(0, fields.count - 1) }
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             printStandardHeader()
-            let title = "MANAGE FIELDS — \(database.name.uppercased())"
+            let title = ">>> swiftBASE MANAGE FIELDS: \(database.name.uppercased()) <<<"
             let pad = max(0, (118 - title.count) / 2)
             print(String(repeating: " ", count: pad) + title)
             print(" Use Arrow Keys or type number selection")
             print("")
 
             for (idx, field) in fields.enumerated() {
-                let prefix = (idx == selectedIdx) ? " -> " : "    "
+                let isSelected = (idx == selectedIdx)
+                let content: String
                 if field.isBlankLine {
-                    print("\(prefix)[\(idx + 1)]. (blank line)")
+                    content = "[\(idx + 1)]. (blank line)"
                 } else {
                     let hiddenTag = field.hiddenFromCard ? "  [hidden from card]" : ""
-                    print("\(prefix)[\(idx + 1)]. \(field.name)\(hiddenTag)")
+                    content = "[\(idx + 1)]. \(field.name)\(hiddenTag)"
+                }
+                if isSelected {
+                    let full = " -> " + content
+                    let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                    print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                } else {
+                    print("    " + content)
                 }
             }
             if let msg = message {
@@ -1175,11 +1221,7 @@ class BaseApp {
                 print(" \u{001B}[1;32m\(msg)\u{001B}[0m")
             }
             print("")
-            let instructions = "Up/Down: select  -/+: reorder  [R]ename  [A]dd  [B]lank Line  [H]ide Toggle  [D]elete  ESC: Done"
-            let instructionsPad = max(0, (118 - instructions.count) / 2)
-            print(String(repeating: " ", count: instructionsPad) + instructions)
-            print(String(repeating: "─", count: 118))
-            printNavFooter()
+            printStandardFooter(keys: "Up/Down: select  -/+: reorder  [R]ename  [A]dd  [B]lank Line  [H]ide Toggle  [D]elete  ESC: Done")
 
             switch keyboard.readKey() {
             case .up:
@@ -1310,9 +1352,10 @@ class BaseApp {
     // MARK: - Search (prompt-first, matching swiftCONTACTS' own showSearchScreen)
     func showSearchScreen(database: BaseDatabase) {
         printStandardHeader()
-        print("                          >>> swiftBASE SEARCH ENGINE <<<                            ")
+        let title = ">>> swiftBASE SEARCH <<<"
+        let pad = max(0, (118 - title.count) / 2)
+        print(String(repeating: " ", count: pad) + title)
         print(String(repeating: "─", count: 118))
-        printNavFooter()
         print(" Enter search phrase: ", terminator: "")
         guard let query = readLine(), !query.isEmpty else { goBack(); return }
 
@@ -1343,9 +1386,16 @@ class BaseApp {
             print(" (Press ESC to go back)\n")
 
             for (idx, record) in results.enumerated() {
-                let prefix = (idx == localIdx) ? " -> " : "    "
+                let isSelected = (idx == localIdx)
                 let display = record.values[displayField] ?? "(untitled)"
-                print("\(prefix)[\(idx + 1)]. \(display)")
+                let content = "[\(idx + 1)]. \(display)"
+                if isSelected {
+                    let full = " -> " + content
+                    let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                    print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
+                } else {
+                    print("    " + content)
+                }
             }
             print(String(repeating: "─", count: 118))
             printStandardFooter(keys: "ENTER/1-9: View | ESC: Back")
@@ -1412,6 +1462,10 @@ class BaseApp {
                 }
             }
             goBack()
+        case .other(let ch) where navMapLookup()[Character(ch.lowercased())] != nil:
+            navigateToApp(navMapLookup()[Character(ch.lowercased())]!, args: [machineName, uptime, cpuUsage, memUsage])
+        case .other(let ch) where ch.lowercased() == "l":
+            returnToLauncher()
         default:
             goBack()
         }
@@ -1422,7 +1476,6 @@ class BaseApp {
         print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
         printStandardHeader()
         print(" ADD RECORD to \(database.name)\n")
-        printNavFooter()
         var values: [String: String] = [:]
         for field in database.fields where !field.isBlankLine {
             print(" \(field.name): ", terminator: "")
@@ -1448,7 +1501,6 @@ class BaseApp {
         print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
         printStandardHeader()
         print(" EDIT RECORD — press Enter on any field to keep its current value.\n")
-        printNavFooter()
         var newValues = record.values
         for field in database.fields where !field.isBlankLine {
             let current = record.values[field.name] ?? ""

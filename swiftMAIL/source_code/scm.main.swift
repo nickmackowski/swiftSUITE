@@ -1464,6 +1464,22 @@ class MailManager {
         fflush(stdout)
     }
     
+    private func colorizeFooterKeys(_ line: String) -> String {
+        let segments = line.components(separatedBy: "|")
+        let colored = segments.map { segment -> String in
+            if let bracketRange = segment.range(of: "]"), segment.trimmingCharacters(in: .whitespaces).hasPrefix("[") {
+                let keyPart = String(segment[segment.startIndex..<bracketRange.upperBound])
+                let rest = String(segment[bracketRange.upperBound...])
+                return "\u{001B}[1;35m\(keyPart)\u{001B}[0m\(rest)"
+            }
+            guard let colonRange = segment.range(of: ": ") else { return segment }
+            let keyPart = String(segment[segment.startIndex..<colonRange.lowerBound])
+            let rest = String(segment[colonRange.lowerBound...])
+            return "\u{001B}[1;35m\(keyPart)\u{001B}[0m\(rest)"
+        }
+        return colored.joined(separator: "|")
+    }
+    
     private func printStandardFooter(keys: String) {
         let inner = 118
         let segs = keys.components(separatedBy: "|")
@@ -1476,7 +1492,8 @@ class MailManager {
         print("╭" + String(repeating: "─", count: inner) + "╮")
         for line in lines {
             let p = max(0, (inner - line.count) / 2)
-            print("│" + String(repeating: " ", count: p) + line + String(repeating: " ", count: inner - p - line.count) + "│")
+            let colored = colorizeFooterKeys(line)
+            print("│" + String(repeating: " ", count: p) + colored + String(repeating: " ", count: inner - p - line.count) + "│")
         }
         print("╰" + String(repeating: "─", count: inner) + "╯")
     }
@@ -2224,9 +2241,13 @@ class MailManager {
         print("\u{001B}[2J\u{001B}[1;1H", terminator: "") 
         printStandardHeader()
         if replyTo != nil {
-            print("                      >>> COMPOSE OUTBOUND REPLY TRANSMISSION <<<                 ")
+            let title = ">>> swiftMAIL COMPOSE REPLY <<<"
+            let pad = max(0, (118 - title.count) / 2)
+            print(String(repeating: " ", count: pad) + title)
         } else {
-            print("                      >>> COMPOSE NEW OUTBOUND MAIL TRANSMISSION <<<              ")
+            let title = ">>> swiftMAIL COMPOSE MAIL <<<"
+            let pad = max(0, (118 - title.count) / 2)
+            print(String(repeating: " ", count: pad) + title)
         }
         print(String(repeating: "─", count: 120))
         
@@ -2426,8 +2447,10 @@ class MailManager {
         while true {
             print("\u{001B}[2J\u{001B}[1;1H", terminator: "")
             printStandardHeader()
-            print("                       >>> ACCOUNT SETUP <<<                        ")
-            print(String(repeating: "─", count: 120))
+            let title = ">>> swiftMAIL ACCOUNT SETUP <<<"
+            let pad = max(0, (118 - title.count) / 2)
+            print(String(repeating: " ", count: pad) + title)
+            print(" Use Arrow Keys or type number selection")
             print("")
             
             dataLock.lock()
@@ -2439,12 +2462,15 @@ class MailManager {
                 for _ in 0..<10 { print("") }
             } else {
                 for (idx, account) in currentAccounts.enumerated() {
-                    let pointer = (idx == localSelectionIndex) ? " -> " : "    "
+                    let isSelected = (idx == localSelectionIndex)
                     let serviceLabel = "[\(account.type.shortLabel)]"
-                    if idx == localSelectionIndex {
-                        print("\(pointer)[\(idx + 1)]. \(serviceLabel) Config: \u{001B}[7m\(account.emailAddress)\u{001B}[0m")
+                    let content = "[\(idx + 1)]. \(serviceLabel) Config: \(account.emailAddress)"
+                    if isSelected {
+                        let full = " -> " + content
+                        let padded = full.padding(toLength: 118, withPad: " ", startingAt: 0)
+                        print("\u{001B}[7m\u{001B}[1m\(padded)\u{001B}[0m")
                     } else {
-                        print("\(pointer)[\(idx + 1)]. \(serviceLabel) Config: \(account.emailAddress)")
+                        print("    " + content)
                     }
                 }
                 for _ in 0..<max(1, 10 - currentAccounts.count) { print("") }
@@ -2532,7 +2558,9 @@ class MailManager {
             }
         }
         
-        print("                  >>> EDIT ACCOUNT [\(accountIndex + 1)] <<<")
+        let title = ">>> swiftMAIL EDIT ACCOUNT [\(accountIndex + 1)] <<<"
+        let pad = max(0, (118 - title.count) / 2)
+        print(String(repeating: " ", count: pad) + title)
         print(String(repeating: "─", count: 120))
         print(" (ESC at any prompt cancels and returns to Account Setup)")
         print("")
