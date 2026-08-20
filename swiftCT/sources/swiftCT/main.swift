@@ -16,11 +16,36 @@ import Darwin
 // ─────────────────────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────────────────────
-let windowWidth: CGFloat = 1045
-let windowHeight: CGFloat = 700
 let horizontalInset: CGFloat = 12
 let fontSize: CGFloat = 14
 let fontName = "Menlo"
+
+// Every swift CLI app in the suite renders a fixed 118-character-wide layout inside a
+// box (│ + 118 + │ = 120 columns total). windowWidth used to be a hardcoded pixel guess
+// (1045pt) that was occasionally a few columns too narrow depending on how Menlo actually
+// rendered on a given system, causing the box-drawing borders and header to wrap. Instead,
+// measure the font's real character width at launch and size the window to fit
+// targetColumns with a couple of columns to spare, so it's always wide enough regardless
+// of font/rendering differences.
+let targetColumns = 122
+let targetRows = 44
+
+private func terminalFont() -> NSFont {
+    NSFont(name: fontName, size: fontSize) ?? NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
+}
+
+private func measuredCharWidth() -> CGFloat {
+    let sample = "M" as NSString
+    return sample.size(withAttributes: [.font: terminalFont()]).width
+}
+
+private func measuredLineHeight() -> CGFloat {
+    let font = terminalFont()
+    return font.ascender - font.descender + font.leading
+}
+
+let windowWidth: CGFloat = (measuredCharWidth() * CGFloat(targetColumns)) + (horizontalInset * 2)
+let windowHeight: CGFloat = measuredLineHeight() * CGFloat(targetRows)
 
 // App branding — used in the custom About panel.
 let appVersionBase = "3.01.08.04"
