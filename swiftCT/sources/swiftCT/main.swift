@@ -27,7 +27,7 @@ let fontName = "Menlo"
 // measure the font's real character width at launch and size the window to fit
 // targetColumns with a couple of columns to spare, so it's always wide enough regardless
 // of font/rendering differences.
-let targetColumns = 122
+let targetColumns = 125
 let targetRows = 44
 
 private func terminalFont() -> NSFont {
