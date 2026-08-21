@@ -7,6 +7,7 @@
 
 import Cocoa
 import IOKit.ps
+
 #if canImport(Glibc)
 import Glibc
 #else
@@ -219,6 +220,9 @@ struct SharedConfig: Codable {
     var showTailscale: Bool?          // nil defaults to true (shown) — an existing config file without this key shouldn'''t suddenly hide a row nobody asked to hide
     var showSyncthing: Bool?          // same default-to-true behavior
     var showVPN: Bool?                // same default-to-true behavior
+    var terminalOpacity: Double?      // swiftCT's currently-saved theme opacity (0.1–1.0), written by
+                                       // swiftCT at launch and on Save Settings. nil means swiftCT hasn't
+                                       // saved one yet — treat that as 1.0 (fully opaque).
 }
 
 func sharedConfigURL() -> URL? {
@@ -820,6 +824,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
     var isDarkMode = true   // defaults to dark, matching swiftCT's own default theme
 
+    // Read once at launch rather than re-reading the shared file repeatedly — swiftCT's
+    // opacity isn't going to change while this app is already running.
+    var sharedDarkModeOpacity: CGFloat = 1.0
+
     var telemetryTimer: Timer?
     var networkTimer: Timer?
     var telemetryLabels: [String: NSTextField] = [:]
@@ -832,11 +840,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var scaleFactor: CGFloat = 1.0
     var aboutWindowController: AboutWindowController?
 
-    var background: NSColor { isDarkMode ? darkBackground : lightBackground }
+    var background: NSColor { isDarkMode ? darkBackground.withAlphaComponent(sharedDarkModeOpacity) : lightBackground }
     var foreground: NSColor { isDarkMode ? darkForeground : lightForeground }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        sharedDarkModeOpacity = CGFloat(loadSharedConfig().terminalOpacity ?? 1.0)
         buildWindow()
         setUpMainMenu()
         window.makeKeyAndOrderFront(nil)
@@ -944,6 +953,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.title = "System Info"
             window.center()
         }
+        window.isOpaque = false
         window.backgroundColor = background
 
         let content = NSView(frame: NSRect(x: 0, y: 0, width: winWidth, height: winHeight))

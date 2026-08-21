@@ -27,7 +27,7 @@ let fontName = "Menlo"
 // measure the font's real character width at launch and size the window to fit
 // targetColumns with a couple of columns to spare, so it's always wide enough regardless
 // of font/rendering differences.
-let targetColumns = 125
+let targetColumns = 122
 let targetRows = 44
 
 private func terminalFont() -> NSFont {
@@ -113,6 +113,7 @@ enum CursorShape: Int, CaseIterable {
 let themeIndexDefaultsKey = "swiftCT.themeIndex"
 let cursorShapeDefaultsKey = "swiftCT.cursorShape"
 let cursorBlinkDefaultsKey = "swiftCT.cursorBlink"
+let themeOpacitiesDefaultsKey = "swiftCT.themeOpacities"
 let savedConnectionsDefaultsKey = "swiftCT.savedConnections"
 
 // A remembered SSH connection — nickname is optional, shown alongside
@@ -207,6 +208,10 @@ struct SharedConfig: Codable {
     var showTailscale: Bool?          // nil defaults to true (shown) — an existing config file without this key shouldn'''t suddenly hide a row nobody asked to hide
     var showSyncthing: Bool?          // same default-to-true behavior
     var showVPN: Bool?                // same default-to-true behavior
+    var terminalOpacity: Double?      // the currently-saved default theme's opacity (0.1–1.0), read by the
+                                       // GUI companion apps (swiftCLOCK, swiftEYES, swiftSYSINFO) so their
+                                       // dark-mode backgrounds match swiftCT's transparency. nil means no
+                                       // value has been saved yet — companion apps should treat that as 1.0.
 }
 
 func sharedConfigURL() -> URL? {
@@ -382,8 +387,9 @@ class RemoteSessionController: NSObject, NSWindowDelegate, LocalProcessTerminalV
         // theme changes later while this window stays open.
         let themeIndex = owner?.currentThemeIndex ?? factoryDefaultThemeIndex
         let theme = colorThemes[themeIndex]
-        let bg = theme.background
-        window.isOpaque = true
+        let opacity = owner?.currentThemeOpacities[theme.name] ?? 1.0
+        let bg = theme.background.withAlphaComponent(opacity)
+        window.isOpaque = false
         window.backgroundColor = bg
         window.center()
 
@@ -465,16 +471,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
     // "Live" state — what's actually showing right now, including
     // temporary previews from the Settings window that haven't been
-    // committed via the Default button yet.
+    // committed via the Save Settings button yet.
     var currentThemeIndex = factoryDefaultThemeIndex
     var currentCursorShape: CursorShape = .block
     var currentCursorBlink: Bool = true
+    // Keyed by theme name (not index) so each theme remembers its own
+    // opacity independently — switching themes brings its opacity with it.
+    var currentThemeOpacities: [String: CGFloat] = [:]
 
     // "Saved" state — what's actually persisted, i.e. what will load
-    // next launch. Only changes when the Default button is pressed.
+    // next launch. Only changes when the Save Settings button is pressed.
     var savedThemeIndex = factoryDefaultThemeIndex
     var savedCursorShape: CursorShape = .block
     var savedCursorBlink: Bool = true
+    var savedThemeOpacities: [String: CGFloat] = [:]
 
     // MARK: - Settings window UI references
     var settingsWindow: NSWindow?
@@ -484,7 +494,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
     var previewLines: [NSTextField] = []
     var cursorRadioButtons: [NSButton] = []
     var blinkCheckbox: NSButton?
-    var defaultButton: NSButton?
+    var opacitySlider: NSSlider?
+    var opacityValueLabel: NSTextField?
+    var saveButton: NSButton?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         guard let corePath = locateSwiftCorePath() else {
@@ -501,6 +513,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         currentThemeIndex = savedThemeIndex
         currentCursorShape = savedCursorShape
         currentCursorBlink = savedCursorBlink
+        currentThemeOpacities = savedThemeOpacities
+        writeOpacityToSharedConfig()
 
         let frame = NSRect(x: 0, y: 0, width: windowWidth, height: windowHeight)
 
@@ -561,6 +575,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         }
         if let blink = defaults.object(forKey: cursorBlinkDefaultsKey) as? Bool {
             savedCursorBlink = blink
+        }
+        if let stored = defaults.object(forKey: themeOpacitiesDefaultsKey) as? [String: Double] {
+            savedThemeOpacities = stored.mapValues { CGFloat($0) }
         }
     }
 
@@ -861,9 +878,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
     // "preview only" mockup, the real terminal updates as you click).
     func applyLiveState() {
         let theme = colorThemes[currentThemeIndex]
-        let bg = theme.background
+        let opacity = currentThemeOpacities[theme.name] ?? 1.0
+        let bg = theme.background.withAlphaComponent(opacity)
 
-        window.isOpaque = true
+        // isOpaque must be false for any transparency to actually show through to the
+        // desktop/windows behind — true here (the old default) forces AppKit to treat the
+        // window as fully solid regardless of what alpha the background color itself has.
+        window.isOpaque = false
         window.backgroundColor = bg
         container.layer?.backgroundColor = bg.cgColor
         terminalView.nativeBackgroundColor = bg
@@ -980,7 +1001,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         refreshSidebarSelection()
         refreshPreview()
         refreshCursorControls()
-        updateDefaultButtonState()
+        updateSaveButtonState()
         refreshUtilitySlotRows()
         let currentConfig = loadSharedConfig()
         syncthingKeyField?.stringValue = currentConfig.syncthingAPIKey ?? ""
@@ -1086,6 +1107,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
             preview.addSubview(line)
             previewLines.append(line)
         }
+
+        // Opacity control lives inside the preview box's own lower area, which has
+        // ~70pt of unused space below the three sample lines — placing it here avoids
+        // having to shift every other section's hand-tuned y-coordinates below it, and
+        // it doubles as a live preview since the box's own layer alpha changes with it.
+        let opacityLabel = NSTextField(labelWithString: "Opacity: 100%")
+        opacityLabel.font = NSFont.systemFont(ofSize: 11)
+        opacityLabel.textColor = .secondaryLabelColor
+        opacityLabel.frame = NSRect(x: 14, y: 40, width: rightWidth - 28, height: 14)
+        preview.addSubview(opacityLabel)
+        opacityValueLabel = opacityLabel
+
+        let slider = NSSlider(value: 1.0, minValue: 0.1, maxValue: 1.0, target: self, action: #selector(opacityChanged(_:)))
+        slider.isContinuous = true
+        slider.frame = NSRect(x: 14, y: 14, width: rightWidth - 28, height: 20)
+        preview.addSubview(slider)
+        opacitySlider = slider
 
         // Grouped card behind Cursor — verified bounds: y=576, height=146
         // (top=722), sits just below the preview box with consistent padding.
@@ -1217,15 +1255,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         content.addSubview(statusLabel)
         integrationsStatusLabel = statusLabel
 
-        // Default button, bottom-right — keyEquivalent "\r" gives it the
+        // Save button, bottom-right — keyEquivalent "\r" gives it the
         // native blue "primary action" styling automatically, the same
-        // way every Apple dialog highlights its default button.
-        let defBtn = NSButton(title: "Default", target: self, action: #selector(makeCurrentDefault))
-        defBtn.bezelStyle = .rounded
-        defBtn.keyEquivalent = "\r"
-        defBtn.frame = NSRect(x: winWidth - 100, y: 16, width: 84, height: 28)
-        content.addSubview(defBtn)
-        defaultButton = defBtn
+        // way every Apple dialog highlights its default button. Labeled
+        // "Save Settings" rather than "Default" — the old label read like
+        // "reset to factory settings" when its actual job is committing
+        // whatever's currently being previewed (theme, cursor, opacity)
+        // as what persists across launches.
+        let saveBtn = NSButton(title: "Save Settings", target: self, action: #selector(saveCurrentSettings))
+        saveBtn.bezelStyle = .rounded
+        saveBtn.keyEquivalent = "\r"
+        saveBtn.frame = NSRect(x: winWidth - 130, y: 16, width: 114, height: 28)
+        content.addSubview(saveBtn)
+        saveButton = saveBtn
 
         win.contentView = content
         settingsWindow = win
@@ -1265,7 +1307,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         applyLiveState()
         refreshSidebarSelection()
         refreshPreview()
-        updateDefaultButtonState()
+        updateSaveButtonState()
     }
 
     @objc func cursorShapeChanged(_ sender: NSButton) {
@@ -1275,27 +1317,44 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
             radio.state = (radio.tag == sender.tag) ? .on : .off
         }
         applyLiveState()
-        updateDefaultButtonState()
+        updateSaveButtonState()
     }
 
     @objc func cursorBlinkChanged(_ sender: NSButton) {
         currentCursorBlink = (sender.state == .on)
         applyLiveState()
-        updateDefaultButtonState()
+        updateSaveButtonState()
     }
 
-    @objc func makeCurrentDefault() {
+    // Writes the currently-saved theme's opacity to the shared config file so companion
+    // apps (swiftCLOCK, swiftEYES, swiftSYSINFO) always see swiftCT's real current setting
+    // — called both at launch (so it's fresh even if Save Settings was never clicked this
+    // session) and whenever Save Settings actually commits a change.
+    func writeOpacityToSharedConfig() {
+        var sharedConfig = loadSharedConfig()
+        let savedThemeName = colorThemes[savedThemeIndex].name
+        sharedConfig.terminalOpacity = Double(savedThemeOpacities[savedThemeName] ?? 1.0)
+        saveSharedConfig(sharedConfig)
+    }
+
+    @objc func saveCurrentSettings() {
         savedThemeIndex = currentThemeIndex
         savedCursorShape = currentCursorShape
         savedCursorBlink = currentCursorBlink
+        savedThemeOpacities = currentThemeOpacities
 
         let defaults = UserDefaults.standard
         defaults.set(savedThemeIndex, forKey: themeIndexDefaultsKey)
         defaults.set(savedCursorShape.rawValue, forKey: cursorShapeDefaultsKey)
         defaults.set(savedCursorBlink, forKey: cursorBlinkDefaultsKey)
+        defaults.set(savedThemeOpacities.mapValues { Double($0) }, forKey: themeOpacitiesDefaultsKey)
+
+        // Non-destructive: read the existing shared config first so this doesn't wipe out
+        // the Syncthing/Tailscale fields saveIntegrations() writes separately.
+        writeOpacityToSharedConfig()
 
         refreshSidebarSelection()
-        updateDefaultButtonState()
+        updateSaveButtonState()
     }
 
     // MARK: - Utilities list
@@ -1446,10 +1505,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
     func refreshPreview() {
         let theme = colorThemes[currentThemeIndex]
-        previewBox?.layer?.backgroundColor = theme.background.cgColor
+        let opacity = currentThemeOpacities[theme.name] ?? 1.0
+        previewBox?.layer?.backgroundColor = theme.background.withAlphaComponent(opacity).cgColor
         for line in previewLines {
             line.textColor = theme.foreground
         }
+        opacitySlider?.doubleValue = Double(opacity)
+        opacityValueLabel?.stringValue = "Opacity: \(Int((opacity * 100).rounded()))%"
+    }
+
+    @objc func opacityChanged(_ sender: NSSlider) {
+        let theme = colorThemes[currentThemeIndex]
+        currentThemeOpacities[theme.name] = CGFloat(sender.doubleValue)
+        opacityValueLabel?.stringValue = "Opacity: \(Int((sender.doubleValue * 100).rounded()))%"
+        previewBox?.layer?.backgroundColor = theme.background.withAlphaComponent(CGFloat(sender.doubleValue)).cgColor
+        applyLiveState()
+        updateSaveButtonState()
     }
 
     func refreshCursorControls() {
@@ -1459,16 +1530,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         blinkCheckbox?.state = currentCursorBlink ? .on : .off
     }
 
-    func updateDefaultButtonState() {
+    func updateSaveButtonState() {
         let matchesSaved = currentThemeIndex == savedThemeIndex
             && currentCursorShape == savedCursorShape
             && currentCursorBlink == savedCursorBlink
-        defaultButton?.isEnabled = !matchesSaved
+            && currentThemeOpacities == savedThemeOpacities
+        saveButton?.isEnabled = !matchesSaved
     }
 
     // MARK: - NSWindowDelegate
 
-    // If the Settings window closes without the user hitting Default,
+    // If the Settings window closes without the user hitting Save Settings,
     // treat everything they were browsing as a discarded preview and
     // revert the real terminal back to the actual saved default.
     func windowWillClose(_ notification: Notification) {
@@ -1478,6 +1550,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
             currentThemeIndex = savedThemeIndex
             currentCursorShape = savedCursorShape
             currentCursorBlink = savedCursorBlink
+            currentThemeOpacities = savedThemeOpacities
             applyLiveState()
         }
     }

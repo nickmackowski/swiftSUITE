@@ -7,6 +7,48 @@
 
 import Cocoa
 
+// MARK: - Shared opacity (from swiftCT)
+// swiftCT writes its currently-saved theme's opacity to a shared JSON file inside the
+// swiftSUITE folder (not UserDefaults — each compiled app has its own separate UserDefaults
+// domain, so that wouldn't be visible here). This is a read-only, minimal duplicate of that
+// same struct/lookup — decoding only pulls out the one field this app cares about and
+// silently ignores the rest, so it stays safe to read even as swiftCT's own config grows.
+// This app never writes to this file, only reads it, so there's no risk of clobbering
+// swiftCT's Syncthing/Tailscale settings that also live in it.
+private struct SharedTerminalConfig: Codable {
+    var terminalOpacity: Double?
+}
+
+private func locateSwiftSuiteRoot() -> URL? {
+    var dir = URL(fileURLWithPath: CommandLine.arguments[0])
+        .resolvingSymlinksInPath()
+        .deletingLastPathComponent()
+
+    for _ in 0..<6 {   // generous ceiling — covers both .app-bundled and standalone invocation
+        let candidate = dir.appendingPathComponent("swiftCORE/swiftCORE")
+        if FileManager.default.isExecutableFile(atPath: candidate.path) {
+            return dir
+        }
+        let parent = dir.deletingLastPathComponent()
+        if parent == dir { break }   // hit filesystem root, stop
+        dir = parent
+    }
+    return nil
+}
+
+// Falls back to 1.0 (fully opaque, today's existing look) if swiftCT isn't installed
+// alongside this app, hasn't been launched yet, or has never had its opacity saved.
+private func loadSharedTerminalOpacity() -> CGFloat {
+    guard let root = locateSwiftSuiteRoot() else { return 1.0 }
+    let url = root.appendingPathComponent("swiftCT").appendingPathComponent("swiftsuite-config.json")
+    guard let data = try? Data(contentsOf: url),
+          let config = try? JSONDecoder().decode(SharedTerminalConfig.self, from: data),
+          let opacity = config.terminalOpacity else {
+        return 1.0
+    }
+    return CGFloat(opacity)
+}
+
 // MARK: - ClockFaceView
 // A flat, minimal GtkClock-style analog face: soft light-grey dial, dot markers
 // with bold dots at each hour, a short thick hour wedge, a long thin minute hand,
@@ -29,7 +71,14 @@ final class ClockFaceView: NSView {
         didSet { needsDisplay = true }
     }
 
-    private var dialColor: NSColor { isDarkMode ? darkDialColor : lightDialColor }
+    // Read once at launch (set by AppDelegate right after init) rather than re-reading the
+    // shared file on every draw — swiftCT's opacity isn't going to change while this app is
+    // already running, so there's no need to poll it continuously.
+    var sharedDarkModeOpacity: CGFloat = 1.0
+
+    private var dialColor: NSColor {
+        isDarkMode ? darkDialColor.withAlphaComponent(sharedDarkModeOpacity) : lightDialColor
+    }
     private var markColor: NSColor { isDarkMode ? darkMarkColor : lightMarkColor }
     private var minorDotColor: NSColor { markColor.withAlphaComponent(0.35) }
 
@@ -502,6 +551,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         clockView = ClockFaceView(frame: NSRect(origin: .zero, size: windowSize))
         clockView.minWindowSize = minWindowSize
         clockView.maxWindowSize = maxWindowSize
+        clockView.sharedDarkModeOpacity = loadSharedTerminalOpacity()
         window.contentView = clockView
 
         window.makeKeyAndOrderFront(nil)
