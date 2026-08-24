@@ -27,7 +27,7 @@ let fontName = "Menlo"
 // measure the font's real character width at launch and size the window to fit
 // targetColumns with a couple of columns to spare, so it's always wide enough regardless
 // of font/rendering differences.
-let targetColumns = 122
+let targetColumns = 123
 let targetRows = 44
 
 private func terminalFont() -> NSFont {
@@ -93,26 +93,10 @@ let colorThemes: [ColorTheme] = [
 // list above doesn't silently break which theme is the factory default.
 let factoryDefaultThemeIndex: Int = colorThemes.firstIndex(where: { $0.name == "Clear Dark" }) ?? 0
 
-enum CursorShape: Int, CaseIterable {
-    case block = 0
-    case underline = 1
-    case bar = 2
-
-    var label: String {
-        switch self {
-        case .block: return "Block"
-        case .underline: return "Underline"
-        case .bar: return "Vertical Bar"
-        }
-    }
-}
-
 // UserDefaults keys for persisting the chosen defaults across launches.
 // These represent the SAVED default — separate from whatever's being
 // live-previewed in the Settings window at any given moment.
 let themeIndexDefaultsKey = "swiftCT.themeIndex"
-let cursorShapeDefaultsKey = "swiftCT.cursorShape"
-let cursorBlinkDefaultsKey = "swiftCT.cursorBlink"
 let themeOpacitiesDefaultsKey = "swiftCT.themeOpacities"
 let savedConnectionsDefaultsKey = "swiftCT.savedConnections"
 
@@ -473,8 +457,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
     // temporary previews from the Settings window that haven't been
     // committed via the Save Settings button yet.
     var currentThemeIndex = factoryDefaultThemeIndex
-    var currentCursorShape: CursorShape = .block
-    var currentCursorBlink: Bool = true
     // Keyed by theme name (not index) so each theme remembers its own
     // opacity independently — switching themes brings its opacity with it.
     var currentThemeOpacities: [String: CGFloat] = [:]
@@ -482,8 +464,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
     // "Saved" state — what's actually persisted, i.e. what will load
     // next launch. Only changes when the Save Settings button is pressed.
     var savedThemeIndex = factoryDefaultThemeIndex
-    var savedCursorShape: CursorShape = .block
-    var savedCursorBlink: Bool = true
     var savedThemeOpacities: [String: CGFloat] = [:]
 
     // MARK: - Settings window UI references
@@ -492,8 +472,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
     var defaultLabel: NSTextField?
     var previewBox: NSView?
     var previewLines: [NSTextField] = []
-    var cursorRadioButtons: [NSButton] = []
-    var blinkCheckbox: NSButton?
     var opacitySlider: NSSlider?
     var opacityValueLabel: NSTextField?
     var saveButton: NSButton?
@@ -511,8 +489,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
         loadSavedDefaults()
         currentThemeIndex = savedThemeIndex
-        currentCursorShape = savedCursorShape
-        currentCursorBlink = savedCursorBlink
         currentThemeOpacities = savedThemeOpacities
         writeOpacityToSharedConfig()
 
@@ -539,7 +515,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         terminalView = LocalProcessTerminalView(frame: terminalFrame)
         terminalView.autoresizingMask = [.width, .height]
         terminalView.processDelegate = self
-        terminalView.menu = buildTerminalContextMenu()
+        terminalView.menu = buildMainTerminalContextMenu()
 
         if let font = NSFont(name: fontName, size: fontSize) {
             terminalView.font = font
@@ -559,6 +535,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         terminalView.startProcess(executable: corePath, args: [])
     }
 
+    // Right-click anywhere in the main terminal window shows this — same Copy/Paste/Select
+    // All every terminal context menu needs, plus Quit for convenience. Scoped to the main
+    // swiftCT window only, not remote SSH session windows (those keep the plain
+    // buildTerminalContextMenu()).
+    func buildMainTerminalContextMenu() -> NSMenu {
+        let menu = NSMenu()
+        menu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "")
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "")
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
+        return menu
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
     }
@@ -569,12 +560,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
             savedThemeIndex = idx
         } else {
             savedThemeIndex = factoryDefaultThemeIndex
-        }
-        if let shapeRaw = defaults.object(forKey: cursorShapeDefaultsKey) as? Int, let shape = CursorShape(rawValue: shapeRaw) {
-            savedCursorShape = shape
-        }
-        if let blink = defaults.object(forKey: cursorBlinkDefaultsKey) as? Bool {
-            savedCursorBlink = blink
         }
         if let stored = defaults.object(forKey: themeOpacitiesDefaultsKey) as? [String: Double] {
             savedThemeOpacities = stored.mapValues { CGFloat($0) }
@@ -635,7 +620,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
                          keyEquivalent: "q")
 
         // Terminal menu — just the external terminal launcher now;
-        // theme/transparency/cursor all moved into Settings.
+        // theme/transparency moved into Settings.
         let terminalMenuItem = NSMenuItem()
         mainMenu.addItem(terminalMenuItem)
         let terminalMenu = NSMenu(title: "Terminal")
@@ -889,23 +874,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         container.layer?.backgroundColor = bg.cgColor
         terminalView.nativeBackgroundColor = bg
         terminalView.nativeForegroundColor = theme.foreground
-
-        applyCursorSettings()
-    }
-
-    // NOTE: unverified against an actual compile in this environment — if
-    // this doesn't build, these are the first properties/enum cases to
-    // check against SwiftTerm's actual Terminal/TerminalOptions API.
-    func applyCursorSettings() {
-        let terminal = terminalView.getTerminal()
-        switch (currentCursorShape, currentCursorBlink) {
-        case (.block, true):      terminal.options.cursorStyle = .blinkBlock
-        case (.block, false):     terminal.options.cursorStyle = .steadyBlock
-        case (.underline, true):  terminal.options.cursorStyle = .blinkUnderline
-        case (.underline, false): terminal.options.cursorStyle = .steadyUnderline
-        case (.bar, true):        terminal.options.cursorStyle = .blinkBar
-        case (.bar, false):       terminal.options.cursorStyle = .steadyBar
-        }
     }
 
     // MARK: - About panel
@@ -1000,7 +968,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         // launch/commit, equals the saved default anyway).
         refreshSidebarSelection()
         refreshPreview()
-        refreshCursorControls()
         updateSaveButtonState()
         refreshUtilitySlotRows()
         let currentConfig = loadSharedConfig()
@@ -1017,8 +984,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
     }
 
     func buildSettingsWindow() {
-        let winWidth: CGFloat = 640
-        let winHeight: CGFloat = 952
+        // Landscape rather than portrait — a tall single-column layout couldn't fit on a
+        // 13" MacBook's screen (952pt tall couldn't even reach the Save Settings button).
+        // Trading width for height instead: laptops generally have far more spare width
+        // than height, and this layout needs the extra width to fit three columns side by
+        // side instead of stacking everything vertically.
+        let winWidth: CGFloat = 1000
+        let winHeight: CGFloat = 560
 
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: winWidth, height: winHeight),
@@ -1042,9 +1014,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         let rowHeight: CGFloat = 44
         let contentHeight = rowHeight * CGFloat(colorThemes.count)
         // Document view is at least as tall as the visible scroll area —
-        // if content is shorter than that (as it is today, with 11 fixed
-        // themes), rows anchor to the top and any leftover space falls
-        // below the last row instead of as a gap above the first one.
+        // if content is shorter than that, rows anchor to the top and any
+        // leftover space falls below the last row instead of as a gap
+        // above the first one. With the shorter landscape window this now
+        // routinely scrolls instead, which is fine — hasVerticalScroller
+        // is already on.
         let docHeight = max(contentHeight, winHeight)
         let docView = NSView(frame: NSRect(x: 0, y: 0, width: sidebarWidth, height: docHeight))
 
@@ -1083,27 +1057,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         docView.addSubview(label)
         defaultLabel = label
 
-        // ── Right side: preview + controls ──────────────────────
-        let rightX = sidebarWidth + 20
-        let rightWidth = winWidth - rightX - 20
+        // ── Middle column: preview + services ────────────────────
+        let middleX = sidebarWidth + 20
+        let middleWidth: CGFloat = 440
 
-        // Preview box
+        // Preview box — the one box that stays, since it's showing actual live color
+        // content rather than grouping settings, and needs a defined edge to read as
+        // a swatch rather than text floating with no boundary. Everything else in this
+        // window dropped its box treatment in favor of bold section labels and generous
+        // whitespace instead — closer to how System Settings actually groups things.
         let previewHeight: CGFloat = 150
         let previewY = winHeight - previewHeight - 20
-        let preview = NSView(frame: NSRect(x: rightX, y: previewY, width: rightWidth, height: previewHeight))
+        let preview = NSView(frame: NSRect(x: middleX, y: previewY, width: middleWidth, height: previewHeight))
         preview.wantsLayer = true
-        preview.layer?.cornerRadius = 8
+        preview.layer?.cornerRadius = 10
         preview.layer?.borderWidth = 1
         preview.layer?.borderColor = NSColor.separatorColor.cgColor
         content.addSubview(preview)
         previewBox = preview
 
         previewLines.removeAll()
-        let sampleTexts = ["user@Mac swiftCT %", "swiftCORE v3.0.MM.DDc", "Ready."]
+        let sampleTexts = ["jzmfcz@MacBook ~ %", "swiftCORE v3.01.07.29c", "Ready."]
         for (i, text) in sampleTexts.enumerated() {
             let line = NSTextField(labelWithString: text)
             line.font = NSFont(name: fontName, size: 12) ?? NSFont.systemFont(ofSize: 12)
-            line.frame = NSRect(x: 14, y: previewHeight - 30 - CGFloat(i * 20), width: rightWidth - 28, height: 18)
+            line.frame = NSRect(x: 14, y: previewHeight - 30 - CGFloat(i * 20), width: middleWidth - 28, height: 18)
             preview.addSubview(line)
             previewLines.append(line)
         }
@@ -1115,72 +1093,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         let opacityLabel = NSTextField(labelWithString: "Opacity: 100%")
         opacityLabel.font = NSFont.systemFont(ofSize: 11)
         opacityLabel.textColor = .secondaryLabelColor
-        opacityLabel.frame = NSRect(x: 14, y: 40, width: rightWidth - 28, height: 14)
+        opacityLabel.frame = NSRect(x: 14, y: 40, width: middleWidth - 28, height: 14)
         preview.addSubview(opacityLabel)
         opacityValueLabel = opacityLabel
 
         let slider = NSSlider(value: 1.0, minValue: 0.1, maxValue: 1.0, target: self, action: #selector(opacityChanged(_:)))
         slider.isContinuous = true
-        slider.frame = NSRect(x: 14, y: 14, width: rightWidth - 28, height: 20)
+        slider.frame = NSRect(x: 14, y: 14, width: middleWidth - 28, height: 20)
         preview.addSubview(slider)
         opacitySlider = slider
 
-        // Grouped card behind Cursor — verified bounds: y=576, height=146
-        // (top=722), sits just below the preview box with consistent padding.
-        addSectionCard(to: content, x: rightX, y: 628, width: rightWidth, height: 146)
-
-        // Cursor section
-        let cursorLabelY: CGFloat = 744
-        let cursorSectionLabel = NSTextField(labelWithString: "Cursor")
-        cursorSectionLabel.font = NSFont.boldSystemFont(ofSize: 12)
-        cursorSectionLabel.frame = NSRect(x: rightX, y: cursorLabelY, width: 150, height: 18)
-        content.addSubview(cursorSectionLabel)
-
-        cursorRadioButtons.removeAll()
-        for (i, shape) in CursorShape.allCases.enumerated() {
-            let radio = NSButton(radioButtonWithTitle: shape.label, target: self, action: #selector(cursorShapeChanged(_:)))
-            radio.tag = shape.rawValue
-            radio.frame = NSRect(x: rightX, y: cursorLabelY - 26 - CGFloat(i * 24), width: 200, height: 20)
-            content.addSubview(radio)
-            cursorRadioButtons.append(radio)
-        }
-
-        let blink = NSButton(checkboxWithTitle: "Blink cursor", target: self, action: #selector(cursorBlinkChanged(_:)))
-        blink.frame = NSRect(x: rightX, y: cursorLabelY - 26 - CGFloat(CursorShape.allCases.count * 24) - 6, width: 200, height: 20)
-        content.addSubview(blink)
-        blinkCheckbox = blink
-
-        // ── Utilities section ────────────────────────────────────
-        let utilitiesLabelY: CGFloat = 590
-
-        // Grouped card — verified bounds: y=348, height=220 (top=568).
-        addSectionCard(to: content, x: rightX, y: 400, width: rightWidth, height: 220)
-
-        let utilitiesLabel = NSTextField(labelWithString: "Utilities  (up to \(maxLaunchSlots))")
-        utilitiesLabel.font = NSFont.boldSystemFont(ofSize: 12)
-        utilitiesLabel.frame = NSRect(x: rightX, y: utilitiesLabelY, width: 250, height: 18)
-        content.addSubview(utilitiesLabel)
-
-        let utilitiesListContainer = NSView(frame: NSRect(x: rightX, y: utilitiesLabelY - 148, width: rightWidth, height: 144))
-        content.addSubview(utilitiesListContainer)
-        self.utilitiesListContainer = utilitiesListContainer
-        refreshUtilitySlotRows()
-
-        let addBtn = NSButton(title: "Add App…", target: self, action: #selector(addUtilityApp))
-        addBtn.bezelStyle = .rounded
-        addBtn.frame = NSRect(x: rightX, y: utilitiesLabelY - 178, width: 110, height: 24)
-        content.addSubview(addBtn)
-        addUtilityButton = addBtn
-
-        // ── Integrations section ─────────────────────────────────
-        let integrationsLabelY: CGFloat = 362
-
-        // Grouped card — verified bounds: y=70, height=270 (top=340).
-        addSectionCard(to: content, x: rightX, y: 64, width: rightWidth, height: 328)
-
+        // ── Services section — no box, just a bold header and generous whitespace ─
+        let integrationsLabelY = previewY - 30
         let integrationsLabel = NSTextField(labelWithString: "Services  (for System Info)")
         integrationsLabel.font = NSFont.boldSystemFont(ofSize: 12)
-        integrationsLabel.frame = NSRect(x: rightX, y: integrationsLabelY, width: 280, height: 18)
+        integrationsLabel.frame = NSRect(x: middleX, y: integrationsLabelY, width: 280, height: 18)
         content.addSubview(integrationsLabel)
 
         let existingConfig = loadSharedConfig()
@@ -1188,9 +1115,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
         let syncthingKeyLabel = NSTextField(labelWithString: "Syncthing API Key")
         syncthingKeyLabel.font = NSFont.systemFont(ofSize: 11)
-        syncthingKeyLabel.frame = NSRect(x: rightX, y: integrationsLabelY - 32, width: 200, height: 14)
+        syncthingKeyLabel.frame = NSRect(x: middleX, y: integrationsLabelY - 32, width: 200, height: 14)
         content.addSubview(syncthingKeyLabel)
-        let syncthingKeyField = NSTextField(frame: NSRect(x: rightX, y: integrationsLabelY - 62, width: rightWidth, height: 22))
+        let syncthingKeyField = NSTextField(frame: NSRect(x: middleX, y: integrationsLabelY - 62, width: middleWidth, height: 22))
         syncthingKeyField.font = fieldFont
         syncthingKeyField.stringValue = existingConfig.syncthingAPIKey ?? ""
         syncthingKeyField.placeholderString = "Syncthing web UI → Settings → GUI → API Key"
@@ -1199,9 +1126,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
         let syncthingFolderLabel = NSTextField(labelWithString: "Syncthing Folder ID(s) — comma-separated")
         syncthingFolderLabel.font = NSFont.systemFont(ofSize: 11)
-        syncthingFolderLabel.frame = NSRect(x: rightX, y: integrationsLabelY - 94, width: 300, height: 14)
+        syncthingFolderLabel.frame = NSRect(x: middleX, y: integrationsLabelY - 94, width: 300, height: 14)
         content.addSubview(syncthingFolderLabel)
-        let syncthingFolderField = NSTextField(frame: NSRect(x: rightX, y: integrationsLabelY - 124, width: rightWidth, height: 22))
+        let syncthingFolderField = NSTextField(frame: NSRect(x: middleX, y: integrationsLabelY - 124, width: middleWidth, height: 22))
         syncthingFolderField.font = fieldFont
         syncthingFolderField.stringValue = existingConfig.syncthingFolderIDs ?? ""
         syncthingFolderField.placeholderString = "abc123, def456"
@@ -1210,10 +1137,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
         let tailscalePathLabel = NSTextField(labelWithString: "Tailscale Binary Path")
         tailscalePathLabel.font = NSFont.systemFont(ofSize: 11)
-        tailscalePathLabel.frame = NSRect(x: rightX, y: integrationsLabelY - 156, width: 200, height: 14)
+        tailscalePathLabel.frame = NSRect(x: middleX, y: integrationsLabelY - 156, width: 200, height: 14)
         content.addSubview(tailscalePathLabel)
-        let tailscaleFieldWidth = rightWidth - 80
-        let tailscalePathField = NSTextField(frame: NSRect(x: rightX, y: integrationsLabelY - 186, width: tailscaleFieldWidth, height: 22))
+        let tailscaleFieldWidth = middleWidth - 80
+        let tailscalePathField = NSTextField(frame: NSRect(x: middleX, y: integrationsLabelY - 186, width: tailscaleFieldWidth, height: 22))
         tailscalePathField.font = fieldFont
         tailscalePathField.stringValue = existingConfig.tailscaleBinaryPath ?? ""
         tailscalePathField.placeholderString = ".../Tailscale.app/Contents/MacOS/Tailscale"
@@ -1222,45 +1149,67 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
         let browseTailscaleBtn = NSButton(title: "Browse…", target: self, action: #selector(browseTailscaleBinary))
         browseTailscaleBtn.bezelStyle = .rounded
-        browseTailscaleBtn.frame = NSRect(x: rightX + tailscaleFieldWidth + 8, y: integrationsLabelY - 187, width: 72, height: 24)
+        browseTailscaleBtn.frame = NSRect(x: middleX + tailscaleFieldWidth + 8, y: integrationsLabelY - 187, width: 72, height: 24)
         content.addSubview(browseTailscaleBtn)
 
         let showTailscaleCheckboxField = NSButton(checkboxWithTitle: "Show Tailscale row", target: nil, action: nil)
         showTailscaleCheckboxField.state = (existingConfig.showTailscale ?? true) ? .on : .off
-        showTailscaleCheckboxField.frame = NSRect(x: rightX, y: integrationsLabelY - 218, width: 180, height: 20)
+        showTailscaleCheckboxField.frame = NSRect(x: middleX, y: integrationsLabelY - 218, width: 180, height: 20)
         content.addSubview(showTailscaleCheckboxField)
         showTailscaleCheckbox = showTailscaleCheckboxField
 
         let showSyncthingCheckboxField = NSButton(checkboxWithTitle: "Show Syncthing row", target: nil, action: nil)
         showSyncthingCheckboxField.state = (existingConfig.showSyncthing ?? true) ? .on : .off
-        showSyncthingCheckboxField.frame = NSRect(x: rightX + 190, y: integrationsLabelY - 218, width: 180, height: 20)
+        showSyncthingCheckboxField.frame = NSRect(x: middleX + 190, y: integrationsLabelY - 218, width: 180, height: 20)
         content.addSubview(showSyncthingCheckboxField)
         showSyncthingCheckbox = showSyncthingCheckboxField
 
         let showVPNCheckboxField = NSButton(checkboxWithTitle: "Show VPN row", target: nil, action: nil)
         showVPNCheckboxField.state = (existingConfig.showVPN ?? true) ? .on : .off
-        showVPNCheckboxField.frame = NSRect(x: rightX, y: integrationsLabelY - 244, width: 180, height: 20)
+        showVPNCheckboxField.frame = NSRect(x: middleX, y: integrationsLabelY - 244, width: 180, height: 20)
         content.addSubview(showVPNCheckboxField)
         showVPNCheckbox = showVPNCheckboxField
 
         let saveIntegrationsBtn = NSButton(title: "Save Services", target: self, action: #selector(saveIntegrations))
         saveIntegrationsBtn.bezelStyle = .rounded
-        saveIntegrationsBtn.frame = NSRect(x: rightX, y: integrationsLabelY - 286, width: 140, height: 24)
+        saveIntegrationsBtn.frame = NSRect(x: middleX, y: integrationsLabelY - 286, width: 140, height: 24)
         content.addSubview(saveIntegrationsBtn)
 
         let statusLabel = NSTextField(labelWithString: "")
         statusLabel.font = NSFont.systemFont(ofSize: 11)
         statusLabel.textColor = .secondaryLabelColor
-        statusLabel.frame = NSRect(x: rightX + 150, y: integrationsLabelY - 282, width: rightWidth - 150, height: 16)
+        statusLabel.frame = NSRect(x: middleX + 150, y: integrationsLabelY - 282, width: middleWidth - 150, height: 16)
         content.addSubview(statusLabel)
         integrationsStatusLabel = statusLabel
+
+        // ── Right column: Utilities — no box, top-aligned with Preview ───
+        let rightX = middleX + middleWidth + 20
+        let rightWidth = winWidth - rightX - 20
+
+        let utilitiesLabelY = previewY + previewHeight - 18
+        let utilitiesLabel = NSTextField(labelWithString: "Utilities  (up to \(maxLaunchSlots))")
+        utilitiesLabel.font = NSFont.boldSystemFont(ofSize: 12)
+        utilitiesLabel.frame = NSRect(x: rightX, y: utilitiesLabelY, width: 250, height: 18)
+        content.addSubview(utilitiesLabel)
+
+        let utilitiesGridHeight: CGFloat = 72   // 3 rows × 24pt
+        let utilitiesListContainer = NSView(frame: NSRect(x: rightX, y: utilitiesLabelY - 10 - utilitiesGridHeight, width: rightWidth, height: utilitiesGridHeight))
+        content.addSubview(utilitiesListContainer)
+        self.utilitiesListContainer = utilitiesListContainer
+        refreshUtilitySlotRows()
+
+        let addBtn = NSButton(title: "Add App…", target: self, action: #selector(addUtilityApp))
+        addBtn.bezelStyle = .rounded
+        addBtn.frame = NSRect(x: rightX, y: utilitiesLabelY - 10 - utilitiesGridHeight - 8 - 24, width: 110, height: 24)
+        content.addSubview(addBtn)
+        addUtilityButton = addBtn
 
         // Save button, bottom-right — keyEquivalent "\r" gives it the
         // native blue "primary action" styling automatically, the same
         // way every Apple dialog highlights its default button. Labeled
         // "Save Settings" rather than "Default" — the old label read like
         // "reset to factory settings" when its actual job is committing
-        // whatever's currently being previewed (theme, cursor, opacity)
+        // whatever's currently being previewed (theme, opacity)
         // as what persists across launches.
         let saveBtn = NSButton(title: "Save Settings", target: self, action: #selector(saveCurrentSettings))
         saveBtn.bezelStyle = .rounded
@@ -1273,19 +1222,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         settingsWindow = win
     }
 
-    // Subtle grouped-card background, the defining visual trait of modern
-    // System Settings — sections sit in distinct rounded panels rather
-    // than floating on one flat background. Added behind a section's own
-    // controls (added to the view hierarchy first, so it renders behind).
-    func addSectionCard(to content: NSView, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) {
-        let card = NSView(frame: NSRect(x: x - 12, y: y, width: width + 24, height: height))
-        card.wantsLayer = true
-        card.layer?.backgroundColor = NSColor.controlBackgroundColor.withAlphaComponent(0.6).cgColor
-        card.layer?.cornerRadius = 10
-        card.layer?.borderWidth = 1
-        card.layer?.borderColor = NSColor.separatorColor.cgColor
-        content.addSubview(card)
-    }
+
 
     func makeSwatchImage(theme: ColorTheme) -> NSImage {
         let size = NSSize(width: 36, height: 24)
@@ -1310,22 +1247,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         updateSaveButtonState()
     }
 
-    @objc func cursorShapeChanged(_ sender: NSButton) {
-        guard let shape = CursorShape(rawValue: sender.tag) else { return }
-        currentCursorShape = shape
-        for radio in cursorRadioButtons {
-            radio.state = (radio.tag == sender.tag) ? .on : .off
-        }
-        applyLiveState()
-        updateSaveButtonState()
-    }
-
-    @objc func cursorBlinkChanged(_ sender: NSButton) {
-        currentCursorBlink = (sender.state == .on)
-        applyLiveState()
-        updateSaveButtonState()
-    }
-
     // Writes the currently-saved theme's opacity to the shared config file so companion
     // apps (swiftCLOCK, swiftEYES, swiftSYSINFO) always see swiftCT's real current setting
     // — called both at launch (so it's fresh even if Save Settings was never clicked this
@@ -1339,14 +1260,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
     @objc func saveCurrentSettings() {
         savedThemeIndex = currentThemeIndex
-        savedCursorShape = currentCursorShape
-        savedCursorBlink = currentCursorBlink
         savedThemeOpacities = currentThemeOpacities
 
         let defaults = UserDefaults.standard
         defaults.set(savedThemeIndex, forKey: themeIndexDefaultsKey)
-        defaults.set(savedCursorShape.rawValue, forKey: cursorShapeDefaultsKey)
-        defaults.set(savedCursorBlink, forKey: cursorBlinkDefaultsKey)
         defaults.set(savedThemeOpacities.mapValues { Double($0) }, forKey: themeOpacitiesDefaultsKey)
 
         // Non-destructive: read the existing shared config first so this doesn't wipe out
@@ -1377,18 +1294,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
             return
         }
 
+        // 2 columns × up to 3 rows (maxLaunchSlots = 6) instead of a single tall column —
+        // same per-slot content (kind indicator, name, remove button), laid out left-to-right
+        // then top-to-bottom.
+        let columnGap: CGFloat = 12
+        let columnWidth = (containerWidth - columnGap) / 2
+
         for (index, slot) in slots.enumerated() {
-            let rowY = listContainer.bounds.height - CGFloat(index + 1) * rowHeight
-            let rowContainer = NSView(frame: NSRect(x: 0, y: rowY, width: containerWidth, height: rowHeight))
+            let col = index % 2
+            let row = index / 2
+            let colX = CGFloat(col) * (columnWidth + columnGap)
+            let rowY = listContainer.bounds.height - CGFloat(row + 1) * rowHeight
+            let rowContainer = NSView(frame: NSRect(x: colX, y: rowY, width: columnWidth, height: rowHeight))
 
             let kindTag = slot.kind == "companion" ? "●" : "○"
             let label = NSTextField(labelWithString: "\(kindTag)  \(slot.displayName)")
             label.font = NSFont.systemFont(ofSize: 12)
-            label.frame = NSRect(x: 4, y: 3, width: containerWidth - 34, height: 18)
+            label.frame = NSRect(x: 4, y: 3, width: columnWidth - 30, height: 18)
             label.lineBreakMode = .byTruncatingTail
             rowContainer.addSubview(label)
 
-            let removeBtn = NSButton(frame: NSRect(x: containerWidth - 24, y: 2, width: 18, height: 18))
+            let removeBtn = NSButton(frame: NSRect(x: columnWidth - 22, y: 2, width: 18, height: 18))
             removeBtn.image = NSImage(systemSymbolName: "minus.circle.fill", accessibilityDescription: "Remove")
             removeBtn.isBordered = false
             removeBtn.imagePosition = .imageOnly
@@ -1523,17 +1449,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         updateSaveButtonState()
     }
 
-    func refreshCursorControls() {
-        for radio in cursorRadioButtons {
-            radio.state = (radio.tag == currentCursorShape.rawValue) ? .on : .off
-        }
-        blinkCheckbox?.state = currentCursorBlink ? .on : .off
-    }
-
     func updateSaveButtonState() {
         let matchesSaved = currentThemeIndex == savedThemeIndex
-            && currentCursorShape == savedCursorShape
-            && currentCursorBlink == savedCursorBlink
             && currentThemeOpacities == savedThemeOpacities
         saveButton?.isEnabled = !matchesSaved
     }
@@ -1548,8 +1465,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
         if closedWindow === settingsWindow {
             currentThemeIndex = savedThemeIndex
-            currentCursorShape = savedCursorShape
-            currentCursorBlink = savedCursorBlink
             currentThemeOpacities = savedThemeOpacities
             applyLiveState()
         }
