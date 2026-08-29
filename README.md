@@ -40,6 +40,7 @@ Detailed setup and usage guides for each app:
 - [swiftCLOCK](docs/swiftCLOCK.md)
 - [swiftSYSINFO](docs/swiftSYSINFO.md)
 - [swiftXLOGO](docs/swiftXLOGO.md)
+- [swiftVIEW](docs/swiftVIEW.md)
 
 ---
 ## Features
@@ -49,7 +50,7 @@ Detailed setup and usage guides for each app:
 - **Live navigation** — single-key jumps between all apps via `execv`, no launcher round-trips
 - **Web accessible** — serve the full suite in any browser via ttyd + Tailscale
 - **Native local launcher** — swiftCT drops you straight into swiftCORE with a native macOS app, no browser or ttyd required; double-click for a GUI window, or run it directly from a shell
-- **Companion utilities** — swiftEYES, swiftCLOCK, and swiftSYSINFO extend swiftCT with quick-access desktop tools, launchable from its Utilities menu; swiftCLOCKv2 adds live cursor-tracking eyes and Day-Date-style complications to its watch face, and swiftSYSINFO surfaces VPN/Tailscale/Syncthing status alongside live CPU/memory/disk telemetry
+- **Companion utilities** — swiftEYES, swiftCLOCK, swiftSYSINFO, swiftXLOGO, and swiftVIEW extend swiftCT with quick-access desktop tools, launchable from its Utilities menu; swiftCLOCKv2 adds live cursor-tracking eyes and Day-Date-style complications to its watch face, swiftSYSINFO surfaces VPN/Tailscale/Syncthing status alongside live CPU/memory/disk telemetry, swiftXLOGO is a nostalgic floating xlogo with a genuinely transparent background, and swiftVIEW is a read-only glance at today's and tomorrow's calendar, weather, and notes together in one list
 - **Aviation weather** — one combined setup in swiftCALENDAR creates both a live METAR (current conditions) and TAF (forecast) account from a single airport code, with the real airport name and city decoded in the detail view
 - **ICS calendar sync** — supports any CalDAV/ICS feed (iCloud, Outlook, Google Calendar)
 - **Calendar overlays** — birthdays (from swiftCONTACTS) and due-date reminders (from swiftNOTES) appear automatically on swiftCALENDAR's month view, computed live on every launch — nothing is duplicated or stored twice
@@ -97,7 +98,7 @@ swiftc -target x86_64-apple-macosx14.0 scl.main.swift -o swiftCORE_x86
 lipo -create swiftCORE_arm64 swiftCORE_x86 -output swiftCORE
 ```
 Repeat for each app directory. If an app's source has been moved into its own `source_code/` subfolder (see Directory Structure below), adjust the path in the `swiftc` command accordingly — `swiftADMIN` handles this automatically either way.
-> **Why two build methods?** The seven core apps above are pure terminal programs — they read/write stdin/stdout directly, with no windows or GUI framework, so a single `.swift` file compiled straight via `swiftc` is genuinely the simplest correct approach. `swiftCT` and its three companion utilities (`swiftEYES`, `swiftCLOCK`, `swiftSYSINFO`) are real native macOS GUI apps — actual windows, buttons, and menus — which fundamentally requires an `.app` bundle (Finder won't treat something as a proper double-clickable application without one) and, for swiftCT specifically, Swift Package Manager, since that's the only way to pull in an external dependency like SwiftTerm at all. This is standard practice in Swift development generally — CLI tools and GUI apps almost always have separate build setups, even within one larger codebase. `swiftADMIN`'s Build All Apps handles both transparently — you never have to think about which one an app needs — auto-detecting SPM projects by the presence of `Package.swift` and running that app's own `build.sh`, which produces both a native `.app` bundle and a standalone CLI binary. Build any of the four manually with `cd <app folder> && ./build.sh`. See [docs/swiftCT.md](docs/swiftCT.md) for swiftCT's own details.
+> **Why two build methods?** The seven core apps above are pure terminal programs — they read/write stdin/stdout directly, with no windows or GUI framework, so a single `.swift` file compiled straight via `swiftc` is genuinely the simplest correct approach. `swiftCT` and its five companion utilities (`swiftEYES`, `swiftCLOCK`, `swiftSYSINFO`, `swiftXLOGO`, `swiftVIEW`) are real native macOS GUI apps — actual windows, buttons, and menus — which fundamentally requires an `.app` bundle (Finder won't treat something as a proper double-clickable application without one) and, for swiftCT specifically, Swift Package Manager, since that's the only way to pull in an external dependency like SwiftTerm at all. This is standard practice in Swift development generally — CLI tools and GUI apps almost always have separate build setups, even within one larger codebase. `swiftADMIN`'s Build All Apps handles both transparently — you never have to think about which one an app needs — auto-detecting SPM projects by the presence of `Package.swift` and running that app's own `build.sh`, which produces both a native `.app` bundle and a standalone CLI binary. Build any of the six manually with `cd <app folder> && ./build.sh`. See [docs/swiftCT.md](docs/swiftCT.md) for swiftCT's own details.
 ### 3. First launch
 The recommended way in is `swiftCT` — a native macOS app that drops you straight into swiftCORE, no browser or shell command needed. After Build All Apps completes, an alias is created automatically right in the swiftSUITE folder:
 ```
@@ -219,6 +220,15 @@ swiftSUITE/
 │   ├── logs/
 │   └── source_code/
 │       └── scv.main.swift
+├── swiftVIEW/
+│   ├── swiftVIEW.app
+│   ├── swiftVIEW
+│   ├── Package.swift
+│   ├── Info.plist
+│   ├── build.sh
+│   └── Sources/
+│       └── swiftVIEW/
+│           └── main.swift
 ├── swiftXLOGO/
 │   ├── swiftXLOGO.app
 │   ├── swiftXLOGO
@@ -270,8 +280,9 @@ Optional companion apps, launchable directly from swiftCT's Utilities menu (up t
 | swiftCLOCK | Analog clock — v1 is a clean original design; v2 adds live cursor-tracking eyes and Day-Date-style complications (a date window, and a red Sunday) to the same face |
 | swiftSYSINFO | BGInfo-style system telemetry dashboard — hardware info, live CPU/memory/disk/network usage, and VPN/Tailscale/Syncthing status at a glance |
 | swiftXLOGO | A personal, nostalgic take on xlogo — a colorful X shape with a genuinely transparent background, floating freely on your desktop |
-Documentation: [swiftEYES](docs/swiftEYES.md) · [swiftCLOCK](docs/swiftCLOCK.md) · [swiftSYSINFO](docs/swiftSYSINFO.md) · [swiftXLOGO](docs/swiftXLOGO.md)
-Like swiftCT, all four are Swift Package Manager projects built as universal binaries via their own `build.sh`, and are picked up automatically by `swiftADMIN`'s Build All Apps.
+| swiftVIEW | Read-only glance companion — today's and tomorrow's calendar events, weather, and notes together in one list, with click-through detail popups |
+Documentation: [swiftEYES](docs/swiftEYES.md) · [swiftCLOCK](docs/swiftCLOCK.md) · [swiftSYSINFO](docs/swiftSYSINFO.md) · [swiftXLOGO](docs/swiftXLOGO.md) · [swiftVIEW](docs/swiftVIEW.md)
+Like swiftCT, all five are Swift Package Manager projects built as universal binaries via their own `build.sh`, and are picked up automatically by `swiftADMIN`'s Build All Apps.
 
 ---
 ## Navigation

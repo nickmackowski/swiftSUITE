@@ -35,6 +35,28 @@ ACCOUNTS_FILE = "calendar_accounts.json"
 OUTPUT_FILE   = "calendar.json"
 WEATHER_FILE  = "metar_history.json"   # persistent — upserted, never wholesale-overwritten
 WEATHER_RETENTION_MONTHS = 6
+TAF_CACHE_FILE = "taf_cache.json"       # keyed STATION|YYYY-MM-DD, but unlike WEATHER_FILE this
+                                         # isn't a retained history — a TAF is a forecast with no
+                                         # value once superseded, so this only ever holds the
+                                         # current day's entry per station, actively replaced
+
+def load_taf_cache():
+    if not os.path.exists(TAF_CACHE_FILE):
+        return {}
+    try:
+        with open(TAF_CACHE_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Warning: could not read {TAF_CACHE_FILE}: {e}")
+        return {}
+
+
+def save_taf_cache(cache):
+    try:
+        with open(TAF_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, indent=4, sort_keys=True)
+    except Exception as e:
+        print(f"Warning: could not write {TAF_CACHE_FILE}: {e}")
 
 
 def load_accounts():
@@ -361,7 +383,7 @@ def fetch_nws_temps_tomorrow(lat, lon):
 
 def fetch_taf(station_id, calendar_label, **kwargs):
     """Fetch TAF for a station and return a single all-day event for tomorrow."""
-    url = f"https://aviationweather.gov/api/data/taf?ids={station_id}&format=raw&hours=30"
+    url = f"https://aviationweather.gov/api/data/taf?ids={station_id}&format=raw"
     print(f"  Fetching TAF for {station_id}...")
     try:
         req = urllib.request.Request(url=url, headers={"User-Agent": "swiftCALENDAR/2.7"})
@@ -379,6 +401,13 @@ def fetch_taf(station_id, calendar_label, **kwargs):
     # Unfold continuation lines
     unfolded = raw.replace("\r\n ", "").replace("\n ", "").replace("\r ", "")
     lines = [l.strip() for l in unfolded.splitlines() if l.strip()]
+
+    # Capture the issuance timestamp from the full untouched response before anything below
+    # strips it out of taf_line — this is always present in the TAF's own header line
+    # ("TAF KATL 260527Z 2606/2712 ..."), regardless of which extraction path ends up being
+    # used for the actual conditions text.
+    issuance_match = _re.search(r'\b(\d{6}Z)\b', raw)
+    issuance_str = issuance_match.group(1) if issuance_match else ""
 
     # Search full text for the FM group covering tomorrow
     # Use the RAW (not unfolded) text so FM groups are preserved as tokens
@@ -427,7 +456,7 @@ def fetch_taf(station_id, calendar_label, **kwargs):
             temp_f_str = f"{high_f}°F/{low_f}°F"
             print(f"  NWS temps tomorrow: {high_f}°F/{low_f}°F")
 
-    full_title = f"{taf_line}{temp_c_str}"
+    full_title = f"{issuance_str} {taf_line}{temp_c_str}".strip()
     print(f"  TAF tomorrow: {full_title[:60]}")
     tmrw_start = tomorrow.strftime("%Y-%m-%dT12:00:00Z")
     tmrw_end   = (tomorrow + timedelta(days=2)).strftime("%Y-%m-%dT12:00:00Z")
@@ -627,7 +656,10 @@ def perform_sync():
 
     weather_history = load_weather_history()
     weather_touched = False
+    taf_cache = load_taf_cache()
+    taf_cache_touched = False
     all_events = []
+    today_str = datetime.now().strftime("%Y-%m-%d")
 
     for account in accounts:
         acct_type = account.get("type", "ics").lower()
@@ -637,9 +669,30 @@ def perform_sync():
             sync_metar_account(account["url"], account["name"], weather_history)
             weather_touched = True
         elif acct_type == "taf":
-            # Forecast — always ephemeral, refreshed each sync
-            all_events.extend(fetch_taf(account["url"], account["name"],
-                                         lat=account.get("lat"), lon=account.get("lon")))
+            # Not aviation-critical here — just calendar-glance weather — so one fetch per
+            # calendar day per station is plenty. Cached and reused for any later sync that
+            # same day (manual re-sync, relaunching the app again, etc.) instead of hitting
+            # the API on every single sync regardless of how many times that happens.
+            #
+            # Unlike METAR, a TAF is purely a forward-looking forecast — it has no value once
+            # superseded by that day's actual observations, so this cache holds at most one
+            # entry per station at a time rather than accumulating history: any stale
+            # (previous-day) entry for this same station gets dropped the moment a fresh one
+            # is fetched, instead of lingering until some later prune pass.
+            station_id = account["url"]
+            cache_key = f"{station_id}|{today_str}"
+            if cache_key in taf_cache:
+                all_events.extend(taf_cache[cache_key])
+            else:
+                fetched = fetch_taf(station_id, account["name"],
+                                     lat=account.get("lat"), lon=account.get("lon"))
+                if fetched:
+                    stale_keys = [k for k in taf_cache if k.startswith(f"{station_id}|")]
+                    for k in stale_keys:
+                        del taf_cache[k]
+                    taf_cache[cache_key] = fetched
+                    taf_cache_touched = True
+                all_events.extend(fetched)
         else:
             all_events.extend(fetch_and_parse_feed(account["url"], account["name"],
                                                      start_filter, end_filter))
@@ -648,6 +701,9 @@ def perform_sync():
         weather_history = prune_weather_history(weather_history)
         save_weather_history(weather_history)
         print(f"Weather history: {len(weather_history)} day(s) on file in {WEATHER_FILE}")
+
+    if taf_cache_touched:
+        save_taf_cache(taf_cache)
 
     if not all_events and not weather_touched:
         print("\nNo events found across all accounts in this window.")

@@ -117,10 +117,65 @@ class LogoView: NSView {
     }
 }
 
+// MARK: - About panel
+// Same pattern already used in swiftEYES/swiftCLOCK/swiftSYSINFO/swiftVIEW.
+
+final class AboutWindowController: NSWindowController {
+    convenience init(appName: String, tagline: String, version: String) {
+        let panelSize = NSSize(width: 300, height: 260)
+        let panel = NSPanel(
+            contentRect: NSRect(origin: .zero, size: panelSize),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        panel.title = "About \(appName)"
+        panel.isReleasedWhenClosed = false
+        panel.center()
+
+        let contentView = NSView(frame: NSRect(origin: .zero, size: panelSize))
+
+        let iconView = NSImageView(frame: NSRect(x: (panelSize.width - 60) / 2, y: 196, width: 60, height: 60))
+        iconView.image = NSApplication.shared.applicationIconImage
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        contentView.addSubview(iconView)
+
+        let nameLabel = NSTextField(labelWithString: appName)
+        nameLabel.font = .boldSystemFont(ofSize: 18)
+        nameLabel.alignment = .center
+        nameLabel.frame = NSRect(x: 0, y: 164, width: panelSize.width, height: 24)
+        contentView.addSubview(nameLabel)
+
+        let versionLabel = NSTextField(labelWithString: "Version \(version)")
+        versionLabel.font = .systemFont(ofSize: 11)
+        versionLabel.textColor = .secondaryLabelColor
+        versionLabel.alignment = .center
+        versionLabel.frame = NSRect(x: 0, y: 144, width: panelSize.width, height: 16)
+        contentView.addSubview(versionLabel)
+
+        let taglineLabel = NSTextField(wrappingLabelWithString: tagline)
+        taglineLabel.font = .systemFont(ofSize: 12)
+        taglineLabel.alignment = .center
+        taglineLabel.textColor = .labelColor
+        taglineLabel.frame = NSRect(x: 24, y: 50, width: panelSize.width - 48, height: 90)
+        contentView.addSubview(taglineLabel)
+
+        let okButton = NSButton(title: "OK", target: nil, action: #selector(NSWindow.performClose(_:)))
+        okButton.bezelStyle = .rounded
+        okButton.frame = NSRect(x: (panelSize.width - 80) / 2, y: 14, width: 80, height: 28)
+        okButton.keyEquivalent = "\r"
+        contentView.addSubview(okButton)
+
+        panel.contentView = contentView
+        self.init(window: panel)
+    }
+}
+
 // MARK: - AppDelegate
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow!
     var logoView: LogoView!
+    var aboutWindowController: AboutWindowController?
 
     let minWindowSize = NSSize(width: 100, height: 100)
     let maxWindowSize = NSSize(width: 800, height: 800)
@@ -177,6 +232,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenuItem = NSMenuItem()
         mainMenu.addItem(appMenuItem)
         let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "About swiftXLOGO", action: #selector(showAboutPanel), keyEquivalent: "")
+        appMenu.addItem(NSMenuItem.separator())
         appMenu.addItem(withTitle: "Quit swiftXLOGO", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
 
@@ -214,6 +271,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.setFrame(newFrame, display: true)
         logoView.frame = NSRect(origin: .zero, size: newFrame.size)
         logoView.needsDisplay = true
+    }
+
+    @objc func showAboutPanel() {
+        if aboutWindowController == nil {
+            aboutWindowController = AboutWindowController(
+                appName: "swiftXLOGO",
+                tagline: "A modern take on the original UNIX xlogo — it does nothing but look good on your screen.",
+                version: "3.01.08c"
+            )
+        }
+        aboutWindowController?.showWindow(nil)
+        aboutWindowController?.window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

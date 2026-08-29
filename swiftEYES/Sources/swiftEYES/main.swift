@@ -538,7 +538,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             aboutWindowController = AboutWindowController(
                 appName: "SwiftEyes",
                 tagline: "A tiny transparent eyes toy that follows your cursor around the screen.",
-                version: "1.0",
+                version: "3.01.08c",
                 icon: icon
             )
         }

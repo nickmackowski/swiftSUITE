@@ -570,9 +570,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
 
     func sizeChanged(source: LocalProcessTerminalView, newCols: Int, newRows: Int) {}
 
-    func setTerminalTitle(source: LocalProcessTerminalView, title: String) {
-        window.title = title
-    }
+    // Deliberately ignored — the window should always just say "swiftCT" regardless of
+    // what's running inside the embedded terminal. Without this, swiftCORE's own OSC title
+    // escape (set after login) was overwriting it to "swiftCORE".
+    func setTerminalTitle(source: LocalProcessTerminalView, title: String) {}
 
     func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {}
 
@@ -881,7 +882,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
     @objc func showAboutPanel() {
         if aboutWindow == nil {
             let panelWidth: CGFloat = 340
-            let panelHeight: CGFloat = 170
+            let panelHeight: CGFloat = 232
 
             let panel = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight),
@@ -893,8 +894,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
             panel.isReleasedWhenClosed = false
 
             let contentView = NSView(frame: NSRect(x: 0, y: 0, width: panelWidth, height: panelHeight))
-            contentView.wantsLayer = true
-            contentView.layer?.backgroundColor = colorThemes[currentThemeIndex].background.cgColor
+
+            let iconView = NSImageView(frame: NSRect(x: (panelWidth - 60) / 2, y: 158, width: 60, height: 60))
+            iconView.image = NSApplication.shared.applicationIconImage
+            iconView.imageScaling = .scaleProportionallyUpOrDown
+            contentView.addSubview(iconView)
 
             // Just the "swiftCT" wordmark uses the terminal's own font
             // (Menlo Bold), tying the logo to the actual terminal content —
@@ -908,12 +912,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
             // "swift" plain white, "CT" colored — matches swiftCORE's own
             // convention (the base word stays white, the suite-specific
             // suffix carries the color).
-            let ctColor_C = NSColor(calibratedRed: 1.0, green: 0.8, blue: 0.0, alpha: 1.0)   // yellow
-            let ctColor_T = letterColor_i   // reuses swift's own purple, ties the two together
+            let ctColor_C = NSColor(calibratedRed: 204.0/255.0, green: 0.0, blue: 0.0, alpha: 1.0)   // NC State Wolfpack red (5.89:1 contrast on white)
+            let ctColor_T = ctColor_C   // both C and T in NC State red now
 
             let titleString = NSMutableAttributedString()
             titleString.append(NSAttributedString(string: "swift", attributes: [
-                .font: titleFont, .foregroundColor: NSColor.white, .kern: 2.0
+                .font: titleFont, .foregroundColor: NSColor.labelColor, .kern: 2.0
             ]))
             titleString.append(NSAttributedString(string: "C", attributes: [
                 .font: titleFont, .foregroundColor: ctColor_C
@@ -924,29 +928,39 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
             titleString.addAttribute(.paragraphStyle, value: centeredStyle, range: NSRange(location: 0, length: titleString.length))
 
             let titleField = NSTextField(labelWithAttributedString: titleString)
-            titleField.frame = NSRect(x: 0, y: panelHeight - 60, width: panelWidth, height: 34)
+            titleField.frame = NSRect(x: 0, y: 116, width: panelWidth, height: 34)
             titleField.alignment = .center
             contentView.addSubview(titleField)
 
             let versionString = NSMutableAttributedString()
             versionString.append(NSAttributedString(string: "Version \(appVersionBase)", attributes: [
-                .font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.white
+                .font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor
             ]))
             versionString.append(NSAttributedString(string: appVersionSuffix, attributes: [
                 .font: NSFont.boldSystemFont(ofSize: 13), .foregroundColor: versionSuffixColor
             ]))
             versionString.addAttribute(.paragraphStyle, value: centeredStyle, range: NSRange(location: 0, length: versionString.length))
             let versionField = NSTextField(labelWithAttributedString: versionString)
-            versionField.frame = NSRect(x: 0, y: panelHeight - 92, width: panelWidth, height: 20)
+            versionField.frame = NSRect(x: 0, y: 90, width: panelWidth, height: 20)
             versionField.alignment = .center
             contentView.addSubview(versionField)
 
             let descField = NSTextField(labelWithString: "swiftCT connects you to the core set of swiftSUITE\napplications — swiftCALENDAR, swiftCONTACTS,\nswiftCORE, swiftMAIL, swiftNOTES, swiftSTOCKS,\nand swiftVAULT.")
             descField.font = NSFont.systemFont(ofSize: 11)
-            descField.textColor = .lightGray
+            descField.textColor = .secondaryLabelColor
             descField.alignment = .center
             descField.frame = NSRect(x: 10, y: 15, width: panelWidth - 20, height: 65)
             contentView.addSubview(descField)
+
+            // A little nod to NC State, bottom-right corner — click it to open ncsu.edu.
+            let pawButton = NSButton(frame: NSRect(x: panelWidth - 28, y: 8, width: 18, height: 18))
+            pawButton.image = NSImage(systemSymbolName: "pawprint.fill", accessibilityDescription: "NC State")
+            pawButton.isBordered = false
+            pawButton.imagePosition = .imageOnly
+            pawButton.contentTintColor = ctColor_C
+            pawButton.target = self
+            pawButton.action = #selector(openNCStateWebsite)
+            contentView.addSubview(pawButton)
 
             panel.contentView = contentView
             aboutWindow = panel
@@ -955,6 +969,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, LocalProce
         aboutWindow?.center()
         aboutWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc func openNCStateWebsite() {
+        if let url = URL(string: "https://www.ncsu.edu/") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     // MARK: - Settings window

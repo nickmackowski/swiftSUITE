@@ -190,6 +190,12 @@ func verifyCredentials(username: String, password: String) -> Bool {
 
 // MARK: - Session Management
 
+// Extended from the original 30 minutes (1800s) to 24 hours — this is a single-user
+// personal system, and re-entering credentials once at the start of each day is enough;
+// the shorter timeout was mainly just causing repeated re-prompts throughout the day for
+// no real security benefit here.
+let sessionDurationSeconds: Double = 86400   // 24 hours
+
 func getSessionFile() -> URL {
     let execPath = CommandLine.arguments[0]
     return URL(fileURLWithPath: execPath).deletingLastPathComponent()
@@ -215,7 +221,7 @@ func readSession() -> (isValid: Bool, lastLogin: Date?, username: String?) {
 
 func updateSessionTimestamp(recordLogin: Bool = false, username: String? = nil, sessionKey: Data? = nil) {
     let sessionFile = getSessionFile()
-    let expiryTime = Date().timeIntervalSince1970 + 1800
+    let expiryTime = Date().timeIntervalSince1970 + sessionDurationSeconds
     var lines = ["expires:\(expiryTime)"]
     if recordLogin, let user = username {
         lines.append("lastlogin:\(Date().timeIntervalSince1970)")
@@ -607,6 +613,7 @@ func main() {
 
     let snapshot = SystemSnapshot.capture()
     runLoginGate(snapshot: snapshot)
+    print("\u{001B}]0;swiftCORE\u{0007}", terminator: "")
 
     // App map: letter key → binary folder name
     let appMap: [Character: String] = [

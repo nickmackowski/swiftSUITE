@@ -722,7 +722,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             aboutWindowController = AboutWindowController(
                 appName: "SwiftClock",
                 tagline: "A minimal analog clock face inspired by the classic Unix xclock.",
-                version: "1.0",
+                version: "3.01.08c",
                 icon: icon
             )
         }

@@ -376,16 +376,42 @@ def route_subject(subject):
 
 
 def parse_calendar_event_datetime(raw):
-    """Parses a combined 'M/D[/YY] H:MMam/pm' Date: line (e.g. '8/15 3:00p', '8/15/26 3pm',
-    '08/15/2026 15:00') into a timezone-aware datetime. No timezone is given in the email, so
-    this is treated as LOCAL time on the machine running this script — the same machine running
-    swiftCALENDAR, in the user's own timezone — not UTC. Returns None if unparseable, meaning
-    the whole message just doesn't become a calendar event rather than guessing a wrong time."""
+    """Parses a 'Date:' line into a timezone-aware datetime, plus whether it's an all-day
+    event. Two forms are accepted:
+      - Date + time: 'M/D[/YY] H:MMam/pm' (e.g. '8/15 3:00p', '8/15/26 3pm') -> a timed event
+      - Date only: 'M/D[/YY]' (e.g. '8/26/26') -> an all-day event, anchored at noon local
+        time (isAllDay is what actually drives display; noon is just a safe, unambiguous
+        anchor point that won't drift onto the wrong calendar day if interpreted in a
+        different timezone somewhere downstream, same reasoning calendar_sync.py already
+        uses for TAF's own all-day anchor time)
+    No timezone is given in the email, so this is treated as LOCAL time on the machine
+    running this script — the same machine running swiftCALENDAR, in the user's own
+    timezone — not UTC. Returns None if unparseable, meaning the whole message just doesn't
+    become a calendar event rather than guessing a wrong time. Returns (datetime, is_all_day)
+    on success."""
     raw = raw.strip()
     parts = raw.split(None, 1)
-    if len(parts) != 2:
+    if len(parts) == 1:
+        date_part, time_part = parts[0], None
+    elif len(parts) == 2:
+        date_part, time_part = parts[0], parts[1].strip()
+    else:
         return None
-    date_part, time_part = parts[0], parts[1].strip()
+
+    local_tz = datetime.now().astimezone().tzinfo
+
+    if time_part is None:
+        # Date only -> all-day event.
+        for date_fmt in ("%m/%d/%y", "%m/%d/%Y", "%m/%d"):
+            try:
+                dt = datetime.strptime(date_part, date_fmt)
+                if date_fmt == "%m/%d":
+                    dt = dt.replace(year=datetime.now().year)
+                dt = dt.replace(hour=12, minute=0)
+                return dt.replace(tzinfo=local_tz), True
+            except ValueError:
+                continue
+        return None
 
     time_norm = time_part.lower().replace(" ", "")
     m = re.match(r"^(\d{1,2})(:(\d{2}))?(am|pm|a|p)?$", time_norm)
@@ -402,7 +428,6 @@ def parse_calendar_event_datetime(raw):
         time_str = f"{hour}:{minute:02d}"
         time_fmt = "%H:%M"
 
-    local_tz = datetime.now().astimezone().tzinfo
     for date_fmt in ("%m/%d/%y", "%m/%d/%Y", "%m/%d"):
         try:
             combined = f"{date_part} {time_str}"
@@ -410,18 +435,19 @@ def parse_calendar_event_datetime(raw):
             dt = datetime.strptime(combined, combined_fmt)
             if date_fmt == "%m/%d":
                 dt = dt.replace(year=datetime.now().year)
-            return dt.replace(tzinfo=local_tz)
+            return dt.replace(tzinfo=local_tz), False
         except ValueError:
             continue
     return None
 
 
 def build_calendar_event(title, body):
-    """Parses a 'Date: M/D[/YY] H:MMam/pm' line out of the body (same single-line style as
-    Due:/Tag:) and builds a CalendarEvent-shaped dict ready to append to local_events.json.
-    Returns None if there's no Date: line or it doesn't parse — the message just doesn't become
-    a calendar event in that case (logged by the caller, not silently dropped). End time is
-    always exactly 1 hour after start — no separate end-time input needed in the email.
+    """Parses a 'Date:' line out of the body (same single-line style as Due:/Tag:) and builds
+    a CalendarEvent-shaped dict ready to append to local_events.json. Returns None if there's
+    no Date: line or it doesn't parse — the message just doesn't become a calendar event in
+    that case (logged by the caller, not silently dropped). 'Date: M/D[/YY] H:MMam/pm' makes a
+    timed event ending exactly 1 hour after start; 'Date: M/D[/YY]' with no time makes an
+    all-day event instead — no separate end-time input needed in the email either way.
     isLocal is always true and calendarName is always "Local", matching exactly what a
     manually-typed local event in swiftCALENDAR itself would get — this genuinely is the same
     kind of event, just created remotely; no special "came from remote send" marking (deliberate
@@ -440,11 +466,12 @@ def build_calendar_event(title, body):
 
     if not date_line:
         return None
-    start_dt = parse_calendar_event_datetime(date_line)
-    if start_dt is None:
+    parsed = parse_calendar_event_datetime(date_line)
+    if parsed is None:
         return None
+    start_dt, is_all_day = parsed
 
-    end_dt = start_dt + timedelta(hours=1)
+    end_dt = start_dt if is_all_day else start_dt + timedelta(hours=1)
     start_utc = start_dt.astimezone(timezone.utc)
     end_utc = end_dt.astimezone(timezone.utc)
 
@@ -456,7 +483,7 @@ def build_calendar_event(title, body):
         "endTime": end_utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "notes": cleaned_body,
         "calendarName": "Local",
-        "isAllDay": False,
+        "isAllDay": is_all_day,
         "isLocal": True,
     }
 

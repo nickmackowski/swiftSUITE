@@ -772,7 +772,7 @@ func fetchSyncthingStatus(completion: @escaping (String, StoplightState) -> Void
 
 final class AboutWindowController: NSWindowController {
     convenience init(appName: String, tagline: String, version: String) {
-        let panelSize = NSSize(width: 300, height: 220)
+        let panelSize = NSSize(width: 300, height: 260)
         let panel = NSPanel(
             contentRect: NSRect(origin: .zero, size: panelSize),
             styleMask: [.titled, .closable],
@@ -785,17 +785,22 @@ final class AboutWindowController: NSWindowController {
 
         let contentView = NSView(frame: NSRect(origin: .zero, size: panelSize))
 
+        let iconView = NSImageView(frame: NSRect(x: (panelSize.width - 60) / 2, y: 196, width: 60, height: 60))
+        iconView.image = NSApplication.shared.applicationIconImage
+        iconView.imageScaling = .scaleProportionallyUpOrDown
+        contentView.addSubview(iconView)
+
         let nameLabel = NSTextField(labelWithString: appName)
         nameLabel.font = .boldSystemFont(ofSize: 18)
         nameLabel.alignment = .center
-        nameLabel.frame = NSRect(x: 0, y: panelSize.height - 60, width: panelSize.width, height: 24)
+        nameLabel.frame = NSRect(x: 0, y: 164, width: panelSize.width, height: 24)
         contentView.addSubview(nameLabel)
 
         let versionLabel = NSTextField(labelWithString: "Version \(version)")
         versionLabel.font = .systemFont(ofSize: 11)
         versionLabel.textColor = .secondaryLabelColor
         versionLabel.alignment = .center
-        versionLabel.frame = NSRect(x: 0, y: panelSize.height - 84, width: panelSize.width, height: 16)
+        versionLabel.frame = NSRect(x: 0, y: 144, width: panelSize.width, height: 16)
         contentView.addSubview(versionLabel)
 
         let taglineLabel = NSTextField(wrappingLabelWithString: tagline)
@@ -950,7 +955,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "System Info"
+            window.title = "swiftSYSINFO"
             window.center()
         }
         window.isOpaque = false
@@ -1178,8 +1183,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if aboutWindowController == nil {
             aboutWindowController = AboutWindowController(
                 appName: "swiftSYSINFO",
-                tagline: "A BGInfo-style system info panel for swiftSUITE — CPU, memory, disk, network, and more at a glance.",
-                version: "1.0"
+                tagline: "A system info panel for swiftSUITE — CPU, memory, disk, network, and more at a glance.",
+                version: "3.01.08c"
             )
         }
         aboutWindowController?.showWindow(nil)
