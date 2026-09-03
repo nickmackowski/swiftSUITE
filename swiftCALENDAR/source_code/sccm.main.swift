@@ -147,6 +147,26 @@ func loadKnownAirports() -> [String: AirportInfo] {
     return airports
 }
 
+// The real observation timestamp lives only in the raw METAR text itself (its leading
+// DDHHMMZ group) — startTime is just an all-day date marker shared by every reading
+// captured on the same day now that metar_history.json keeps a full day's worth per
+// station rather than a single reading. Mirrors swiftVIEW's own identical parser.
+func parseMetarObservationTime(from rawText: String) -> Date? {
+    guard let match = rawText.range(of: #"^\d{6}Z"#, options: .regularExpression) else { return nil }
+    let group = rawText[match].dropLast()   // drop trailing "Z"
+    guard group.count == 6,
+          let day = Int(group.prefix(2)),
+          let hour = Int(group.dropFirst(2).prefix(2)),
+          let minute = Int(group.dropFirst(4).prefix(2)) else { return nil }
+
+    var comps = Calendar.current.dateComponents([.year, .month], from: Date())
+    comps.day = day
+    comps.hour = hour
+    comps.minute = minute
+    comps.timeZone = TimeZone(identifier: "UTC")
+    return Calendar.current.date(from: comps)
+}
+
 // Color palette — 8 choices for assigning to calendars
 // Color palette — 7 choices for assigning to calendars. Four colors are reserved for
 // system-computed overlays and deliberately excluded from this picker: Red (local events),
@@ -1306,9 +1326,24 @@ class CalendarManager {
             // calendar_sync.py during normal syncs; swiftCALENDAR also writes to it directly,
             // but only via deleteMetarHistory() below, when explicitly asked to clear a
             // deleted account's history.
+            //
+            // Each day's value is now a LIST of every reading captured that day, not a
+            // single reading — calendar_sync.py keeps a full day's worth so callers can
+            // find highs/lows or graph the day, not just one snapshot. This agenda view
+            // still only wants one line per day though, so the most recent reading (by its
+            // own real observation time, parsed from its raw text — every reading on the
+            // same day shares the same all-day startTime marker now, so that alone can't
+            // tell them apart) gets picked out of each day's list below.
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            let history = try decoder.decode([String: CalendarEvent].self, from: data)
+            let history = try decoder.decode([String: [CalendarEvent]].self, from: data)
+            let mostRecentPerDay = history.values.compactMap { readings -> CalendarEvent? in
+                readings.max { a, b in
+                    let aTime = parseMetarObservationTime(from: a.title) ?? a.startTime
+                    let bTime = parseMetarObservationTime(from: b.title) ?? b.startTime
+                    return aTime < bTime
+                }
+            }
             // Only remove entries belonging to a currently-configured METAR account — NOT every
             // isWeather-flagged event. isWeather now also covers TAF events (loaded separately
             // via loadEvents(), flagged there since they have decodedWeather populated) — a
@@ -1319,7 +1354,7 @@ class CalendarManager {
             // missing — that's why deleting the file "fixed" it.
             let metarAccountNames = Set(calendarAccounts.filter { $0.type == "metar" }.map { $0.name })
             events.removeAll { $0.isWeather && metarAccountNames.contains($0.calendarName) }
-            events.append(contentsOf: history.values.map { var e = $0; e.isWeather = true; return e })
+            events.append(contentsOf: mostRecentPerDay.map { var e = $0; e.isWeather = true; return e })
             rebuildEventsByDayCache()
         } catch {
             CalendarDebugLogger.log("Weather history load failed: \(error.localizedDescription)", category: "STORAGE-ERR")
@@ -1338,7 +1373,7 @@ class CalendarManager {
             let data = try Data(contentsOf: weatherHistoryURL)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
-            var history = try decoder.decode([String: CalendarEvent].self, from: data)
+            var history = try decoder.decode([String: [CalendarEvent]].self, from: data)
             let prefix = "\(station.uppercased())|"
             let removedCount = history.keys.filter { $0.uppercased().hasPrefix(prefix) }.count
             history = history.filter { !$0.key.uppercased().hasPrefix(prefix) }
@@ -1905,6 +1940,8 @@ class CalendarManager {
             metarAcct.url = stationID
             metarAcct.type = "metar"
             metarAcct.colorIndex = -1
+            metarAcct.lat = lat
+            metarAcct.lon = lon
             
             var tafAcct = CalendarAccount()
             tafAcct.name = "TAF \(stationID)"

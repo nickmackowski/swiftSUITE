@@ -26,6 +26,8 @@ import re
 import uuid
 import json
 import os
+import calendar
+import math
 import urllib.request
 import urllib.error
 from datetime import datetime, timedelta
@@ -105,7 +107,13 @@ def prune_weather_history(history, months=WEATHER_RETENTION_MONTHS):
     while month <= 0:
         month += 12
         year  -= 1
-    cutoff = now.replace(year=year, month=month)
+    # Clamp the day to whatever the target month actually has — replace() keeps
+    # today's day-of-month unchanged otherwise, which throws on any day past what the
+    # target month supports (e.g. Aug 31 minus 6 months lands on Feb, which never has
+    # a 31st — this was the actual crash, invisible on every day except ones like this).
+    _, last_day_of_target_month = calendar.monthrange(year, month)
+    day = min(now.day, last_day_of_target_month)
+    cutoff = now.replace(year=year, month=month, day=day)
 
     kept = {}
     dropped = 0
@@ -255,8 +263,13 @@ def decode_wx_code(raw):
     return " \u00b7 ".join(parts)
 
 
-def fetch_metar(station_id, calendar_label):
-    """Fetch today's and yesterday's METAR — creates up to 2 all-day events."""
+def fetch_metar(station_id, calendar_label, lat=None, lon=None):
+    """Fetch every METAR reading in the 26-hour window, grouped by which local calendar
+    date each one actually falls on. Returns {date_str: [event_dict, ...]}, each day's
+    list sorted chronologically (oldest first) by the reading's own real observation
+    time, not by feed order. This is deliberately every reading, not just one — the
+    point is to keep the full day's worth so callers can find highs/lows or graph the
+    day, not just a single snapshot."""
     url = f"https://aviationweather.gov/api/data/metar?ids={station_id}&format=raw&hours=26"
     print(f"  Fetching METAR for {station_id}...")
     try:
@@ -265,17 +278,36 @@ def fetch_metar(station_id, calendar_label):
             raw = resp.read().decode("utf-8", errors="ignore").strip()
     except Exception as e:
         print(f"  Warning: Could not fetch METAR for {station_id}: {e}")
-        return []
+        return {}
 
     lines = [l.strip() for l in raw.splitlines() if l.strip()]
     if not lines:
         print(f"  Warning: Empty METAR response for {station_id}")
-        return []
+        return {}
 
     import re as _re
-    now       = datetime.now()
-    today_day = now.strftime("%d")
-    yest_day  = (now - timedelta(days=1)).strftime("%d")
+
+    def build_utc_timestamp(day_of_month, hour, minute, reference_now_utc):
+        """Constructs the correct UTC datetime for a METAR's DDHHMMZ group, safely
+        handling month rollover (e.g. today is the 1st, but the METAR's day is 31 --
+        last month) without ever calling .replace(day=X) on a month where X might not
+        be a valid day for it — that's the exact bug class already found and fixed once
+        in prune_weather_history."""
+        year, month = reference_now_utc.year, reference_now_utc.month
+        try:
+            candidate = datetime(year, month, day_of_month, hour, minute)
+        except ValueError:
+            candidate = None
+        if candidate is not None and candidate <= reference_now_utc + timedelta(days=2):
+            return candidate
+        # Invalid for this month, or too far in the future -- must be the previous month
+        if month == 1:
+            prev_year, prev_month = year - 1, 12
+        else:
+            prev_year, prev_month = year, month - 1
+        return datetime(prev_year, prev_month, day_of_month, hour, minute)
+
+    now_utc = datetime.utcnow()
 
     def parse_one(metar, event_date):
         """Parse a single METAR line into a calendar event dict."""
@@ -292,6 +324,15 @@ def fetch_metar(station_id, calendar_label):
             title = title[len(station_id)+1:].strip()
         start = event_date.strftime("%Y-%m-%dT12:00:00Z")
         end   = (event_date + timedelta(days=1)).strftime("%Y-%m-%dT12:00:00Z")
+        sunrise_str, sunset_str = (None, None)
+        if lat is not None and lon is not None:
+            sunrise_str, sunset_str = calculate_sun_times(lat, lon, event_date)
+            if sunrise_str is None:
+                print(f"  Sunrise/sunset: calculate_sun_times() returned nothing for {station_id} "
+                      f"despite lat={lat!r} lon={lon!r} being present — likely a conversion failure")
+        else:
+            print(f"  Sunrise/sunset: skipped for {station_id} — lat={lat!r} lon={lon!r} "
+                  f"(missing from calendar_accounts.json for this METAR account)")
         return {
             "id":             str(uuid.uuid4()).upper(),
             "title":          title,
@@ -304,39 +345,138 @@ def fetch_metar(station_id, calendar_label):
             "isAllDay":       True,
             "isLocal":        False,
             "decodedWeather": decode_wx_code(metar_short),
+            "sunrise":        sunrise_str,
+            "sunset":         sunset_str,
         }
 
-    events = []
-    found_today = False
-    found_yest  = False
+    tz_offset_hours = datetime.now().astimezone().utcoffset().total_seconds() / 3600
 
+    # Every reading in the feed, grouped by which local calendar date it actually falls
+    # on — paired with its own real timestamp for later sorting, not just feed order.
+    by_date = {}
     for line in lines:
-        # Extract day from METAR timestamp (DDHHMM Z format)
-        ts_match = _re.search(r'\b(\d{2})\d{4}Z\b', line)
+        ts_match = _re.search(r'\b(\d{2})(\d{2})(\d{2})Z\b', line)
         if not ts_match:
             continue
-        day = ts_match.group(1)
-        if day == today_day and not found_today:
-            events.append(parse_one(line, now))
-            found_today = True
-            print(f"  METAR today: {line[:50]}")
-        elif day == yest_day and not found_yest:
-            events.append(parse_one(line, now - timedelta(days=1)))
-            found_yest = True
-            print(f"  METAR yesterday: {line[:50]}")
-        if found_today and found_yest:
-            break
+        day_of_month, hour, minute = int(ts_match.group(1)), int(ts_match.group(2)), int(ts_match.group(3))
+        utc_ts = build_utc_timestamp(day_of_month, hour, minute, now_utc)
+        local_ts = utc_ts + timedelta(hours=tz_offset_hours)
+        date_str = local_ts.date().isoformat()
+        by_date.setdefault(date_str, []).append((local_ts, line))
 
-    return events
+    result = {}
+    for date_str, readings in by_date.items():
+        readings.sort(key=lambda pair: pair[0])  # chronological, oldest first
+        event_date = datetime.combine(readings[0][0].date(), datetime.min.time())
+        result[date_str] = [parse_one(line, event_date) for _, line in readings]
+        print(f"  METAR {date_str}: {len(result[date_str])} reading(s) captured "
+              f"({readings[0][0].strftime('%I:%M %p').lstrip('0')} to "
+              f"{readings[-1][0].strftime('%I:%M %p').lstrip('0')} local)")
+
+    return result
 
 
-def sync_metar_account(station_id, calendar_label, history):
-    """Fetch today's/yesterday's METAR and upsert into the persistent history
-    dict, keyed by station+day. Days not re-fetched this run are left alone —
-    this is what makes past observations survive future syncs."""
-    for ev in fetch_metar(station_id, calendar_label):
-        day_key = ev["startTime"][:10]  # YYYY-MM-DD
-        history[f"{station_id.upper()}|{day_key}"] = ev
+def sync_metar_account(station_id, calendar_label, history, lat=None, lon=None):
+    """Today's readings always get replaced with the freshest full set captured this
+    run — today isn't "done" yet, so there's nothing to preserve, just the most current
+    picture of the day so far. Any other date only gets written if it's not already in
+    history at all (a first-time backfill, e.g. after a sync gap) — once a day has an
+    entry, it's frozen; this function will never touch it again after that."""
+    readings_by_date = fetch_metar(station_id, calendar_label, lat=lat, lon=lon)
+    today_str = datetime.now().date().isoformat()
+    for date_str, events_list in readings_by_date.items():
+        key = f"{station_id.upper()}|{date_str}"
+        if date_str == today_str:
+            history[key] = events_list
+        elif key not in history:
+            history[key] = events_list
+            print(f"  METAR {date_str}: backfilled ({len(events_list)} reading(s)) — was missing from history entirely")
+
+
+def calculate_sun_times(lat, lon, date):
+    """Sunrise/sunset for a given lat/lon and date, in LOCAL time (this machine's own
+    configured timezone, DST-aware). NOAA's own API doesn't expose this — confirmed
+    directly with the NWS API team (they compute it internally but don't output it
+    anywhere) — so this is calculated locally instead of adding a fourth external
+    service dependency. Standard NOAA Solar Calculator algorithm (Meeus). Verified
+    against known reference sunrise/sunset times and against the basic seasonal pattern
+    (later sunrise / earlier sunset in winter, the reverse in summer) before use.
+    Returns (sunrise_str, sunset_str) like ("6:56 AM", "7:53 PM"), or (None, None) for
+    the polar day/night edge case, which never actually applies to any real airport."""
+    # calendar_accounts.json apparently stores lat/lon as strings in at least some
+    # cases — never mattered before since the only other place that used them
+    # (fetch_nws_temps_tomorrow) just interpolates them into a URL string, but the
+    # actual trig here needs real numbers. Converts explicitly rather than assuming,
+    # and degrades to no sunrise/sunset rather than crashing the whole sync if a value
+    # genuinely can't be converted.
+    try:
+        lat = float(lat)
+        lon = float(lon)
+    except (TypeError, ValueError):
+        return None, None
+
+    tz_offset_hours = datetime.now().astimezone().utcoffset().total_seconds() / 3600
+
+    def julian_day(d):
+        a = (14 - d.month) // 12
+        y = d.year + 4800 - a
+        m = d.month + 12 * a - 3
+        return d.day + (153 * m + 2) // 5 + 365 * y + y // 4 - y // 100 + y // 400 - 32045
+
+    jd = julian_day(date)
+    jc = (jd - 2451545.0) / 36525.0
+
+    geom_mean_long_sun = (280.46646 + jc * (36000.76983 + jc * 0.0003032)) % 360
+    geom_mean_anom_sun = 357.52911 + jc * (35999.05029 - 0.0001537 * jc)
+    eccent_earth_orbit = 0.016708634 - jc * (0.000042037 + 0.0000001267 * jc)
+
+    sun_eq_of_ctr = (math.sin(math.radians(geom_mean_anom_sun)) * (1.914602 - jc * (0.004817 + 0.000014 * jc))
+                     + math.sin(math.radians(2 * geom_mean_anom_sun)) * (0.019993 - 0.000101 * jc)
+                     + math.sin(math.radians(3 * geom_mean_anom_sun)) * 0.000289)
+
+    sun_true_long = geom_mean_long_sun + sun_eq_of_ctr
+    sun_app_long = sun_true_long - 0.00569 - 0.00478 * math.sin(math.radians(125.04 - 1934.136 * jc))
+
+    mean_obliq_ecliptic = 23 + (26 + ((21.448 - jc * (46.815 + jc * (0.00059 - jc * 0.001813)))) / 60) / 60
+    obliq_corr = mean_obliq_ecliptic + 0.00256 * math.cos(math.radians(125.04 - 1934.136 * jc))
+
+    sun_declin = math.degrees(math.asin(math.sin(math.radians(obliq_corr)) * math.sin(math.radians(sun_app_long))))
+
+    var_y = math.tan(math.radians(obliq_corr / 2)) ** 2
+    eq_of_time = 4 * math.degrees(
+        var_y * math.sin(2 * math.radians(geom_mean_long_sun))
+        - 2 * eccent_earth_orbit * math.sin(math.radians(geom_mean_anom_sun))
+        + 4 * eccent_earth_orbit * var_y * math.sin(math.radians(geom_mean_anom_sun)) * math.cos(2 * math.radians(geom_mean_long_sun))
+        - 0.5 * var_y * var_y * math.sin(4 * math.radians(geom_mean_long_sun))
+        - 1.25 * eccent_earth_orbit * eccent_earth_orbit * math.sin(2 * math.radians(geom_mean_anom_sun))
+    )
+
+    # Standard solar elevation angle for sunrise/sunset: -0.833 degrees, accounting for
+    # atmospheric refraction and the sun's own apparent radius.
+    lat_rad = math.radians(lat)
+    declin_rad = math.radians(sun_declin)
+    cos_hour_angle = (math.cos(math.radians(90.833)) / (math.cos(lat_rad) * math.cos(declin_rad))
+                       - math.tan(lat_rad) * math.tan(declin_rad))
+
+    if cos_hour_angle > 1 or cos_hour_angle < -1:
+        return None, None  # polar day or polar night — never applies to a real airport
+
+    ha_sunrise = math.degrees(math.acos(cos_hour_angle))
+
+    solar_noon_lst = (720 - 4 * lon - eq_of_time + tz_offset_hours * 60) / 1440
+    sunrise_lst = solar_noon_lst - ha_sunrise * 4 / 1440
+    sunset_lst = solar_noon_lst + ha_sunrise * 4 / 1440
+
+    def frac_day_to_string(frac):
+        total_minutes = round(frac * 1440) % 1440
+        h24, m = divmod(total_minutes, 60)
+        ampm = "AM" if h24 < 12 else "PM"
+        h12 = h24 % 12
+        if h12 == 0:
+            h12 = 12
+        return f"{h12}:{m:02d} {ampm}"
+
+    return frac_day_to_string(sunrise_lst), frac_day_to_string(sunset_lst)
 
 
 def fetch_nws_temps_tomorrow(lat, lon):
@@ -461,6 +601,16 @@ def fetch_taf(station_id, calendar_label, **kwargs):
     tmrw_start = tomorrow.strftime("%Y-%m-%dT12:00:00Z")
     tmrw_end   = (tomorrow + timedelta(days=2)).strftime("%Y-%m-%dT12:00:00Z")
 
+    sunrise_str, sunset_str = (None, None)
+    if lat is not None and lon is not None:
+        sunrise_str, sunset_str = calculate_sun_times(lat, lon, tomorrow)
+        if sunrise_str is None:
+            print(f"  Sunrise/sunset: calculate_sun_times() returned nothing for {station_id} "
+                  f"despite lat={lat!r} lon={lon!r} being present — likely a conversion failure")
+    else:
+        print(f"  Sunrise/sunset: skipped for {station_id} — lat={lat!r} lon={lon!r} "
+              f"(missing from calendar_accounts.json for this TAF account)")
+
     return [{
         "id":             str(uuid.uuid4()).upper(),
         "title":          full_title,
@@ -473,6 +623,8 @@ def fetch_taf(station_id, calendar_label, **kwargs):
         "isAllDay":       True,
         "isLocal":        False,
         "decodedWeather": decode_wx_code(taf_line),
+        "sunrise":        sunrise_str,
+        "sunset":         sunset_str,
     }]
 
 
@@ -666,7 +818,8 @@ def perform_sync():
         if acct_type == "metar":
             # METAR is persisted separately (metar_history.json) so past
             # observations survive future syncs instead of being overwritten.
-            sync_metar_account(account["url"], account["name"], weather_history)
+            sync_metar_account(account["url"], account["name"], weather_history,
+                                lat=account.get("lat"), lon=account.get("lon"))
             weather_touched = True
         elif acct_type == "taf":
             # Not aviation-critical here — just calendar-glance weather — so one fetch per

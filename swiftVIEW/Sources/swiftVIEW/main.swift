@@ -129,13 +129,18 @@ struct CalendarEvent: Codable {
     var isAllDay: Bool = false
     var isLocal: Bool = false
     var decodedWeather: String? = nil
+    var sunrise: String? = nil
+    var sunset: String? = nil
 
     // Matches swiftCALENDAR's own CodingKeys exactly — isWeather/isBirthday/isDue are
     // computed at load time by swiftCALENDAR itself and never actually stored in
     // calendar.json, so they're deliberately left out here entirely (this app doesn't need
-    // them for a read-only glance view).
+    // them for a read-only glance view). sunrise/sunset ARE genuinely persisted by
+    // calendar_sync.py though, so unlike those, they're included here — optional, so
+    // regular calendar events, local events, and birthdays (none of which ever have these
+    // fields) simply decode them as nil rather than failing.
     enum CodingKeys: String, CodingKey {
-        case id, title, location, startTime, endTime, notes, calendarName, isAllDay, isLocal, decodedWeather
+        case id, title, location, startTime, endTime, notes, calendarName, isAllDay, isLocal, decodedWeather, sunrise, sunset
     }
 }
 
@@ -201,12 +206,59 @@ func parseObservationTime(from rawText: String) -> Date? {
           let hour = Int(group.dropFirst(2).prefix(2)),
           let minute = Int(group.dropFirst(4).prefix(2)) else { return nil }
 
-    var comps = Calendar.current.dateComponents([.year, .month], from: Date())
-    comps.day = day
-    comps.hour = hour
-    comps.minute = minute
-    comps.timeZone = TimeZone(identifier: "UTC")
-    return Calendar.current.date(from: comps)
+    var utcCalendar = Calendar(identifier: .gregorian)
+    utcCalendar.timeZone = TimeZone(identifier: "UTC")!
+    let nowUTC = Date()
+
+    // Builds a candidate date for the given year/month, returning nil if the day doesn't
+    // actually exist in that month — detected by round-tripping the constructed date's
+    // own components and checking they match what was actually asked for. Without this
+    // check, Calendar.date(from:) silently overflows an invalid day (e.g. day 31 in a
+    // 30-day month) into the wrong date instead of failing, which is exactly what caused
+    // this bug: a reading genuinely from Aug 31 got silently reinterpreted as some
+    // September date once the current month became September, and the corrupted result
+    // then wrongly compared as "more recent" than genuine September readings.
+    func buildDate(year: Int, month: Int) -> Date? {
+        var comps = DateComponents()
+        comps.year = year
+        comps.month = month
+        comps.day = day
+        comps.hour = hour
+        comps.minute = minute
+        guard let candidate = utcCalendar.date(from: comps) else { return nil }
+        let actual = utcCalendar.dateComponents([.year, .month, .day], from: candidate)
+        guard actual.year == year, actual.month == month, actual.day == day else { return nil }
+        return candidate
+    }
+
+    let nowComps = utcCalendar.dateComponents([.year, .month], from: nowUTC)
+    guard let thisYear = nowComps.year, let thisMonth = nowComps.month else { return nil }
+
+    // Try the current month first — covers the overwhelming majority of cases. Also
+    // rejected if it lands more than 2 days in the future, the same safety margin
+    // calendar_sync.py's own equivalent (build_utc_timestamp) already uses.
+    if let candidate = buildDate(year: thisYear, month: thisMonth),
+       candidate <= nowUTC.addingTimeInterval(2 * 24 * 3600) {
+        return candidate
+    }
+
+    // Either the day doesn't exist in the current month, or the result was implausibly
+    // far in the future — must belong to the previous month instead.
+    let (prevYear, prevMonth) = thisMonth == 1 ? (thisYear - 1, 12) : (thisYear, thisMonth - 1)
+    return buildDate(year: prevYear, month: prevMonth)
+}
+
+// Picks the reading with the latest REAL observation time (parsed from its own raw
+// text), not the latest startTime — startTime is just an all-day date marker shared by
+// every reading captured on the same calendar day now that metar_history.json keeps a
+// full day's worth of readings per day instead of one, so it can't distinguish between
+// them the way it used to when there was only ever a single entry per day.
+func mostRecentReading(_ events: [CalendarEvent]) -> CalendarEvent? {
+    events.max { a, b in
+        let aTime = parseObservationTime(from: a.title) ?? a.startTime
+        let bTime = parseObservationTime(from: b.title) ?? b.startTime
+        return aTime < bTime
+    }
 }
 
 // Altimeter group: "A" followed by 4 digits — inHg × 100 (e.g. "A2997" = 29.97 inHg).
@@ -230,6 +282,18 @@ func parseTempCelsius(from rawText: String) -> (temp: Int, dewpoint: Int)? {
     }
     guard let temp = value(parts[0]), let dewpoint = value(parts[1]) else { return nil }
     return (temp, dewpoint)
+}
+
+// Magnus-Tetens approximation — relative humidity from temperature and dewpoint (both
+// Celsius), accurate to within about 0.4% over METAR's realistic range. METAR only in
+// practice: dewpoint here is an actual observation, not a forecast quantity the way TAF's
+// temp/dewpoint-shaped field is.
+func relativeHumidity(tempC: Double, dewpointC: Double) -> Int {
+    func magnus(_ t: Double) -> Double {
+        exp((17.625 * t) / (243.04 + t))
+    }
+    let rh = 100 * magnus(dewpointC) / magnus(tempC)
+    return Int(rh.rounded())
 }
 
 // Visibility group: "NSM" (statute miles), optionally prefixed "P" (greater than, TAF's
@@ -538,7 +602,7 @@ final class EventDetailWindow: NSWindow, NSWindowDelegate {
         self.appDelegate = appDelegate
 
         super.init(
-            contentRect: NSRect(origin: .zero, size: NSSize(width: 280, height: 380)),
+            contentRect: NSRect(origin: .zero, size: NSSize(width: 280, height: 420)),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -575,7 +639,7 @@ final class EventDetailWindow: NSWindow, NSWindowDelegate {
         guard let appDelegate = appDelegate else { return }
         let s = appDelegate.scaleFactor
         let width: CGFloat = 280 * s
-        let height: CGFloat = 380 * s
+        let height: CGFloat = 420 * s
 
         let contentFrame = NSRect(x: 0, y: 0, width: width, height: height)
         let fullFrameRect = frameRect(forContentRect: contentFrame)
@@ -606,12 +670,14 @@ final class EventDetailWindow: NSWindow, NSWindowDelegate {
         // outside the container's own bounds and clipped. Reusing the same object for both
         // measuring and displaying removes any chance of that gap recurring.
         struct MeasuredLine {
-            let label: NSTextField
+            let label: NSTextField?
             let height: CGFloat
             let icon: String
             var trendIcon: String? = nil
             var trendColor: NSColor? = nil
             var textWidth: CGFloat? = nil
+            var customDraw: ((NSRect) -> NSView)? = nil
+            var iconYOffset: CGFloat? = nil
         }
         var lines: [MeasuredLine] = []
         let labelWidth = width - 46 * s
@@ -674,6 +740,86 @@ final class EventDetailWindow: NSWindow, NSWindowDelegate {
             lines.append(MeasuredLine(label: label, height: height, icon: icon, trendIcon: trendIcon, trendColor: trendColor, textWidth: naturalWidth))
         }
 
+        // Builds a min/max/current range indicator — a horizontal track with a dot marking
+        // where the current value sits between low and high, plus a small "current, now"
+        // line underneath. Same idea as swiftSTOCKS' own 52-week range bar (a line + dot
+        // between a min and max), just drawn as real AppKit views here instead of terminal
+        // box-drawing characters, since this app has an actual graphical canvas to work with.
+        func addRangeBar(low: Int, high: Int, current: Int, currentLabel: String, icon: String) {
+            let rowHeight: CGFloat = 40 * s
+            let font = NSFont.systemFont(ofSize: 13 * s)
+            let smallFont = NSFont.systemFont(ofSize: 11 * s)
+            // The generic build-loop formula positions every row's icon 16pt below the
+            // row's own top edge, which is correct for a normal single-line row but leaves
+            // this icon sitting well above the track itself, since this row is taller (46pt)
+            // and the track sits lower within it, with the "now" label below that. This is
+            // the offset that actually centers the icon on trackY (= frame.height - 14*s,
+            // defined again below) instead.
+            let iconYOffset: CGFloat = rowHeight - 18 * s
+
+            let draw: (NSRect) -> NSView = { frame in
+                let container = NSView(frame: frame)
+
+                let lowText = "\(low)°F"
+                let highText = "\(high)°F"
+                let lowWidth = ceil((lowText as NSString).size(withAttributes: [.font: font]).width)
+                let highWidth = ceil((highText as NSString).size(withAttributes: [.font: font]).width)
+
+                let trackY = frame.height - 14 * s
+                let trackX0: CGFloat = lowWidth + 10 * s
+                let trackX1: CGFloat = frame.width - highWidth - 10 * s
+                let trackWidth = max(20 * s, trackX1 - trackX0)
+
+                let lowLabel = NSTextField(labelWithString: lowText)
+                lowLabel.font = font
+                lowLabel.textColor = appDelegate.foreground
+                lowLabel.frame = NSRect(x: 0, y: trackY - 8 * s, width: lowWidth, height: 16 * s)
+                container.addSubview(lowLabel)
+
+                let track = NSView(frame: NSRect(x: trackX0, y: trackY - 1.5 * s, width: trackWidth, height: 3 * s))
+                track.wantsLayer = true
+                track.layer?.backgroundColor = appDelegate.foreground.withAlphaComponent(0.3).cgColor
+                track.layer?.cornerRadius = 1.5 * s
+                container.addSubview(track)
+
+                let highLabel = NSTextField(labelWithString: highText)
+                highLabel.font = font
+                highLabel.textColor = appDelegate.foreground
+                highLabel.frame = NSRect(x: frame.width - highWidth, y: trackY - 8 * s, width: highWidth, height: 16 * s)
+                container.addSubview(highLabel)
+
+                // Dot position — clamped to [0, 1] in case current somehow falls outside
+                // the low-high range (shouldn't happen given current is drawn from the
+                // same reading pool low/high come from, but a real day boundary edge case
+                // isn't worth risking a dot rendered off the end of the track for).
+                let pct: CGFloat = high > low ? CGFloat(current - low) / CGFloat(high - low) : 0.5
+                let clampedPct = max(0, min(1, pct))
+                let dotSize: CGFloat = 12 * s
+                let dotX = trackX0 + trackWidth * clampedPct - dotSize / 2
+                let dot = NSView(frame: NSRect(x: dotX, y: trackY - dotSize / 2, width: dotSize, height: dotSize))
+                dot.wantsLayer = true
+                dot.layer?.backgroundColor = NSColor.systemOrange.cgColor
+                dot.layer?.cornerRadius = dotSize / 2
+                container.addSubview(dot)
+
+                let nowLabel = NSTextField(labelWithString: currentLabel)
+                nowLabel.font = smallFont
+                nowLabel.textColor = appDelegate.foreground.withAlphaComponent(0.7)
+                let nowLabelWidth = ceil((currentLabel as NSString).size(withAttributes: [.font: smallFont]).width)
+                let dotCenterX = dotX + dotSize / 2
+                let idealX = dotCenterX - nowLabelWidth / 2
+                // Clamped so the label can't run off either edge of the card when the dot
+                // sits close to the low or high end of the range.
+                let nowLabelX = max(0, min(frame.width - nowLabelWidth, idealX))
+                nowLabel.frame = NSRect(x: nowLabelX, y: 2 * s, width: nowLabelWidth, height: 14 * s)
+                container.addSubview(nowLabel)
+
+                return container
+            }
+
+            lines.append(MeasuredLine(label: nil, height: rowHeight, icon: icon, customDraw: draw, iconYOffset: iconYOffset))
+        }
+
         // 1. Calendar Name
         addLine(event.calendarName, icon: event.calendarName == "Birthdays" ? "birthday.cake" : "calendar")
 
@@ -690,6 +836,7 @@ final class EventDetailWindow: NSWindow, NSWindowDelegate {
         if isWeather, let obsTime = parseObservationTime(from: event.title) {
             let utcFormatter = DateFormatter()
             utcFormatter.dateFormat = "h:mm a 'UTC'"
+            utcFormatter.timeZone = TimeZone(identifier: "UTC")
             let label = isMetar ? "Observed" : "Issued"
             let utcText = "\(label) \(utcFormatter.string(from: obsTime))"
 
@@ -751,6 +898,14 @@ final class EventDetailWindow: NSWindow, NSWindowDelegate {
                     ))
                 }
                 addAttributedLine(attributed, icon: "thermometer.medium")
+
+                // Humidity — METAR only, computed from the same temp/dewpoint just parsed
+                // above rather than reparsing. TAF's temp/dewpoint-shaped field isn't a true
+                // observed dewpoint the way METAR's is, so it doesn't get this line.
+                if isMetar {
+                    let rh = relativeHumidity(tempC: Double(tempC), dewpointC: Double(dewC))
+                    addLine("\(rh)% relative humidity", icon: "humidity")
+                }
             } else if !event.notes.isEmpty {
                 // Couldn't parse Celsius from the raw text — fall back to showing whatever
                 // Fahrenheit summary is already available rather than dropping the line entirely.
@@ -758,14 +913,49 @@ final class EventDetailWindow: NSWindow, NSWindowDelegate {
             }
         }
 
+        // 6b. Sunrise/Sunset — both METAR and TAF get this (today's on the METAR card,
+        // tomorrow's on the TAF card, since sunrise/sunset itself was computed for
+        // whichever date that event actually represents). Calculated locally by
+        // calendar_sync.py rather than fetched — NWS doesn't expose this data despite
+        // computing it internally, confirmed directly with their API team. Optional
+        // fields, so older calendar.json entries without them just don't show these lines.
+        if isWeather {
+            switch (event.sunrise, event.sunset) {
+            case let (.some(sunrise), .some(sunset)):
+                let font = NSFont.systemFont(ofSize: 12 * s)
+                let combined = NSMutableAttributedString(
+                    string: "\(sunrise)    ",
+                    attributes: [.font: font, .foregroundColor: appDelegate.foreground]
+                )
+                if let sunsetIcon = tintedSymbolImage(systemName: "sunset", color: appDelegate.foreground, pointSize: font.pointSize * 0.85) {
+                    let attachment = NSTextAttachment()
+                    attachment.image = sunsetIcon
+                    combined.append(NSAttributedString(attachment: attachment))
+                    combined.append(NSAttributedString(string: " \(sunset)", attributes: [.font: font, .foregroundColor: appDelegate.foreground]))
+                } else {
+                    combined.append(NSAttributedString(string: sunset, attributes: [.font: font, .foregroundColor: appDelegate.foreground]))
+                }
+                addAttributedLine(combined, icon: "sunrise")
+            case let (.some(sunrise), nil):
+                addLine(sunrise, icon: "sunrise")
+            case let (nil, .some(sunset)):
+                addLine(sunset, icon: "sunset")
+            case (nil, nil):
+                break
+            }
+        }
+
         // 7. Barometer — METAR only (TAF is a forecast issued once, there's no "current
-        // reading" to compare against). Coarse by nature: history keeps roughly one reading
-        // per station per day, so this is a day-over-day comparison, not an intraday trend.
+        // reading" to compare against). Compares against the most recent reading from a
+        // different calendar day — in practice this is almost always yesterday's own
+        // last reading, since today's day-of doesn't count as "previous." Uses
+        // mostRecentReading (true observation time) rather than startTime, since that
+        // other day could itself now have several readings stored, not just one.
         if isMetar,
            let currentAlt = parseAltimeter(from: event.title),
-           let previousReading = (appDelegate.metarEvents
-                .filter { $0.location == event.location && !Calendar.current.isDate($0.startTime, inSameDayAs: event.startTime) }
-                .max { $0.startTime < $1.startTime }),
+           let previousReading = mostRecentReading(appDelegate.metarEvents.filter {
+                $0.location == event.location && !Calendar.current.isDate($0.startTime, inSameDayAs: event.startTime)
+           }),
            let previousAlt = parseAltimeter(from: previousReading.title) {
             let delta = currentAlt - previousAlt
             let (trendIcon, trendColor, trendWord): (String, NSColor, String)
@@ -774,6 +964,29 @@ final class EventDetailWindow: NSWindow, NSWindowDelegate {
             else { (trendIcon, trendColor, trendWord) = ("circle.fill", .systemYellow, "steady") }
             addLineWithTrend(String(format: "%.2f inHg, %@ (was %.2f)", currentAlt, trendWord, previousAlt),
                               icon: "barometer", trendIcon: trendIcon, trendColor: trendColor)
+        }
+
+        // 8. 30-Day Temp Range — METAR only. Rolling 30-day window rather than calendar
+        // month, so it doesn't reset to near-empty on the 1st of every month once there's
+        // real history behind it — it naturally fills in as data accumulates instead.
+        // "Current" reuses this event's own temp from .notes (same field the temp line
+        // above already reads), not a separately-computed most-recent value, so the two
+        // stay consistent with each other on the same card.
+        if isMetar {
+            func fahrenheitTemp(from notes: String) -> Int? {
+                guard let firstPart = notes.split(separator: "/").first else { return nil }
+                let digitsOnly = firstPart.filter { $0.isNumber || $0 == "-" }
+                return Int(digitsOnly)
+            }
+
+            let thirtyDaysAgo = Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date.distantPast
+            let recentReadings = appDelegate.metarEvents.filter {
+                $0.location == event.location && $0.startTime >= thirtyDaysAgo
+            }
+            let temps = recentReadings.compactMap { fahrenheitTemp(from: $0.notes) }
+            if let low = temps.min(), let high = temps.max(), let current = fahrenheitTemp(from: event.notes) {
+                addRangeBar(low: low, high: high, current: current, currentLabel: "\(current)°F now", icon: "arrow.up.arrow.down.circle")
+            }
         }
 
         let topMargin: CGFloat = 20 * s
@@ -791,7 +1004,7 @@ final class EventDetailWindow: NSWindow, NSWindowDelegate {
         for line in lines {
             y -= line.height
 
-            let iconView = NSImageView(frame: NSRect(x: 12 * s, y: y + line.height - 16 * s, width: 16 * s, height: 16 * s))
+            let iconView = NSImageView(frame: NSRect(x: 12 * s, y: y + line.height - (line.iconYOffset ?? 16 * s), width: 16 * s, height: 16 * s))
             iconView.image = NSImage(systemSymbolName: line.icon, accessibilityDescription: nil)
             iconView.contentTintColor = appDelegate.foreground
             scrollContent.addSubview(iconView)
@@ -810,8 +1023,13 @@ final class EventDetailWindow: NSWindow, NSWindowDelegate {
                 scrollContent.addSubview(trendView)
             }
 
-            line.label.frame = NSRect(x: 34 * s, y: y, width: thisLabelWidth, height: line.height)
-            scrollContent.addSubview(line.label)
+            if let label = line.label {
+                label.frame = NSRect(x: 34 * s, y: y, width: thisLabelWidth, height: line.height)
+                scrollContent.addSubview(label)
+            } else if let customDraw = line.customDraw {
+                let customFrame = NSRect(x: 34 * s, y: y, width: thisLabelWidth, height: line.height)
+                scrollContent.addSubview(customDraw(customFrame))
+            }
 
             y -= lineGap
         }
@@ -1146,8 +1364,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         guard let data = try? Data(contentsOf: metarHistoryFileURL) else { return }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let decoded = try? decoder.decode([String: CalendarEvent].self, from: data) else { return }
-        metarEvents = Array(decoded.values)
+        // Each day now stores every reading captured that day, not just one — see
+        // calendar_sync.py's own fetch_metar()/sync_metar_account() for the full
+        // rationale (today always reflects the latest so far; once a day becomes
+        // history it's frozen with everything captured while it was still "today").
+        guard let decoded = try? decoder.decode([String: [CalendarEvent]].self, from: data) else { return }
+        metarEvents = decoded.values.flatMap { $0 }
     }
 
     func loadCalendarAccounts() {
@@ -1171,7 +1393,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     func buildMainWindow() {
         let s = scaleFactor
-        let winWidth: CGFloat = 320 * s
+        let winWidth: CGFloat = 300 * s
         let winHeight: CGFloat = 530 * s
 
         let frame = NSRect(x: 0, y: 0, width: winWidth, height: winHeight)
@@ -1263,9 +1485,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // most-recent across every station, which was silently dropping every station but
         // one whenever more than one was configured. METAR lives in its own separate
         // file/array entirely (metar_history.json), not mixed into calendar.json at all.
+        // "Most recent" now means by real observation time (mostRecentReading), not
+        // startTime — every reading captured on the same day shares the same startTime
+        // marker now that a full day's worth gets stored per station.
         let todayMetars: [CalendarEvent] = Dictionary(grouping: metarEvents, by: { $0.calendarName })
             .values
-            .compactMap { $0.max { $0.startTime < $1.startTime } }
+            .compactMap { mostRecentReading($0) }
             .sorted { $0.calendarName < $1.calendarName }
 
         // Tomorrow's weather is the TAF — a forecast, so it makes sense keyed to tomorrow's
