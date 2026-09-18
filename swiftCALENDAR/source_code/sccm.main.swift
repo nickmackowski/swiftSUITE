@@ -1515,7 +1515,7 @@ class CalendarManager {
                 dueEvent.startTime = due
                 dueEvent.endTime = due
                 dueEvent.isAllDay = true
-                dueEvent.calendarName = "Due Dates"
+                dueEvent.calendarName = "Due"
                 dueEvent.isDue = true
                 newDueEvents.append(dueEvent)
                 
@@ -1525,7 +1525,7 @@ class CalendarManager {
                     reminderEvent.startTime = reminderDate
                     reminderEvent.endTime = reminderDate
                     reminderEvent.isAllDay = true
-                    reminderEvent.calendarName = "Due Dates"
+                    reminderEvent.calendarName = "Due"
                     reminderEvent.isDue = true
                     newDueEvents.append(reminderEvent)
                 }

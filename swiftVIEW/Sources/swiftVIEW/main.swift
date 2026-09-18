@@ -1507,7 +1507,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         .compactMap { $0.max { $0.startTime < $1.startTime } }
         .sorted { $0.calendarName < $1.calendarName }
 
-        let visibleNotes = notes.enumerated().filter { !$0.element.isArchived }
+        let visibleNotes = notes.enumerated()
+            .filter { !$0.element.isArchived }
+            .sorted { $0.element.dateModified > $1.element.dateModified }
 
         // Mirrors swiftCALENDAR's own loadDueDateOverlay() — a note with a due date shows
         // up on the calendar too, not just as a colored dot in the Notes section below.
